@@ -1,0 +1,69 @@
+* { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Consolas', 'Malgun Gothic', sans-serif; }
+body { background: #131722; color: #d1d4dc; padding: 10px; }
+
+.hts-container { max-width: 1600px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+
+.hts-header { background: #1c2030; padding: 10px 20px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #2a2e39; }
+.logo { font-size: 18px; font-weight: bold; color: #fff; letter-spacing: 1px; }
+.pro-tag { background: #00ff88; color: #131722; font-size: 11px; padding: 2px 5px; border-radius: 3px; vertical-align: top; font-weight: bold; }
+.system-status { font-size: 12px; color: #00ff88; }
+.backup-group { display: flex; gap: 8px; }
+
+.hts-grid { display: flex; flex-direction: column; gap: 12px; }
+.grid-row-top { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+
+.left-panel, .right-panel { display: flex; flex-direction: column; gap: 12px; width: 100%; }
+@media (min-width: 1100px) {
+    .hts-grid { display: grid; grid-template-columns: 380px 1fr; gap: 12px; }
+    .grid-row-top { grid-column: 1 / span 2; }
+}
+
+.kpi-card { background: #1e222d; border: 1px solid #2a2e39; border-radius: 4px; padding: 15px; display: flex; flex-direction: column; justify-content: space-between; }
+.kpi-card .label { font-size: 12px; color: #848e9c; margin-bottom: 5px; }
+.kpi-card .value { font-size: 22px; font-weight: bold; letter-spacing: -0.5px; }
+
+.hts-card { background: #1e222d; border: 1px solid #2a2e39; padding: 16px; border-radius: 4px; position: relative; }
+.hts-card h3 { font-size: 13px; color: #fff; margin-bottom: 14px; border-left: 3px solid #00ff88; padding-left: 8px; }
+
+.form-group { margin-bottom: 12px; }
+.form-group label { display: block; font-size: 11px; color: #848e9c; margin-bottom: 4px; }
+input, select { width: 100%; background: #131722; border: 1px solid #2a2e39; padding: 8px; color: #fff; border-radius: 3px; font-size: 13px; }
+input:focus, select:focus { border-color: #00ff88; outline: none; }
+
+button { border: none; border-radius: 3px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+.btn-primary { width: 100%; padding: 10px; background: #29a760; color: #fff; font-size: 13px; }
+.btn-primary:hover { background: #21884e; }
+.btn-refresh { background: #007aff; color: white; padding: 6px 12px; font-size: 12px; }
+.btn-refresh:hover { background: #0056b3; }
+.btn-secondary, .import-label { background: #2a2e39; color: #d1d4dc; padding: 6px 12px; font-size: 12px; border-radius: 3px; cursor: pointer; display: inline-block; }
+.btn-secondary:hover, .import-label:hover { background: #363c4e; color: #fff; }
+.btn-delete { background: #2a2e39; color: #ff4d4d; padding: 3px 8px; font-size: 11px; border: 1px solid #ff4d4d; }
+.btn-delete:hover { background: #ff4d4d; color: #fff; }
+
+.chart-container { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.legend-container { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 5px; font-size: 11px; margin-top: 5px; }
+.legend-item { display: flex; align-items: center; gap: 5px; }
+.color-box { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
+
+.table-wrapper { overflow-x: auto; }
+.hts-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.hts-table th { background: #171b26; color: #848e9c; padding: 10px; font-weight: normal; font-size: 12px; border-bottom: 1px solid #2a2e39; text-align: left; }
+.hts-table td { padding: 10px; border-bottom: 1px solid #2a2e39; }
+
+/* Badges */
+[class^="badge-"] { padding: 2px 6px; border-radius: 3px; font-size: 10px; font-weight: bold; }
+.badge-KRX { background: #ff4d4d; color: #fff; }
+.badge-NASDAQ { background: #4da6ff; color: #fff; }
+.badge-CRYPTO { background: #ffb347; color: #131722; }
+
+.live-price { color: #00ff88; font-weight: bold; }
+.text-up { color: #ff4d4d !important; }
+.text-down { color: #4da6ff !important; }
+.text-neutral { color: #d1d4dc !important; }
+.weight-bold { font-weight: bold; }
+
+.text-right { text-align: right; }
+.text-center { text-align: center; }
+
+.row-up { background: rgba(255, 77, 77, 0.02); }
+.row-down { background: rgba(77, 166, 255, 0.02); }

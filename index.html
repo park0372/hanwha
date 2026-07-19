@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📊 HTS Pro 실시간 자산 관리 시스템</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="hts-container">
+        <!-- HTS 탑 네비바 -->
+        <header class="hts-header">
+            <div class="logo">⚡ HTS <span class="pro-tag">PRO v3.0</span></div>
+            <div class="system-status">📊 실시간 시세 연동 포트폴리오 시스템 [ONLINE]</div>
+            <div class="backup-group">
+                <button onclick="refreshLivePrices()" class="btn-refresh">🔄 시세 새로고침</button>
+                <button onclick="exportData()" class="btn-secondary">📦 데이터 백업(JSON)</button>
+                <label for="import-file" class="btn-secondary import-label">📂 백업 복구</label>
+                <input type="file" id="import-file" accept=".json" onchange="importData(event)" style="display:none;">
+            </div>
+        </header>
+
+        <!-- 메인 대시보드 그리드 -->
+        <div class="hts-grid">
+            
+            <!-- 종합 KPI 대시보드 -->
+            <section class="grid-row-top">
+                <div class="kpi-card">
+                    <span class="label">총 매수금액</span>
+                    <span id="total-buy" class="value text-neutral">0원</span>
+                </div>
+                <div class="kpi-card">
+                    <span class="label">총 평가금액</span>
+                    <span id="total-now" class="value text-neutral">0원</span>
+                </div>
+                <div class="kpi-card">
+                    <span class="label">총 평가손익</span>
+                    <span id="total-profit" class="value">0원</span>
+                </div>
+                <div class="kpi-card">
+                    <span class="label">총 수익률</span>
+                    <span id="total-ratio" class="value">0.00%</span>
+                </div>
+            </section>
+
+            <!-- 좌측 입력 및 차트 영역 -->
+            <div class="left-panel">
+                <!-- 자산 등록 입력 창 -->
+                <div class="hts-card">
+                    <h3><span class="bullet">■</span> 신규 보유 종목 등록</h3>
+                    <div class="form-group">
+                        <label>거래소 구분</label>
+                        <select id="asset-exchange">
+                            <option value="KRX">국내주식 (KRX)</option>
+                            <option value="NASDAQ">미국주식 (NASDAQ/NYSE)</option>
+                            <option value="CRYPTO">가상자산 (Upbit/Binance)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>종목명 또는 심볼</label>
+                        <input id="asset-name" type="text" placeholder="예: 삼성전자, AAPL, BTC" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label>매수단가 (원/달러)</label>
+                        <input id="buy-price" type="number" placeholder="0" step="any">
+                    </div>
+                    <div class="form-group">
+                        <label>보유 수량 (주/개)</label>
+                        <input id="asset-qty" type="number" placeholder="0" step="any">
+                    </div>
+                    <button onclick="addAsset()" class="btn-primary">⚡ 실시간 시세 조회 및 편입</button>
+                </div>
+
+                <!-- 자산 비중 도넛 차트 -->
+                <div class="hts-card chart-card">
+                    <h3><span class="bullet">■</span> 포트폴리오 자산 비중</h3>
+                    <div class="chart-container">
+                        <canvas id="portfolioChart" width="200" height="200"></canvas>
+                        <div id="chart-legend" class="legend-container"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 우측 실시간 보유 잔고 리스트 -->
+            <div class="right-panel">
+                <div class="hts-card list-card">
+                    <h3><span class="bullet">■</span> 실시간 보유 잔고 현황 (종합)</h3>
+                    <div class="table-wrapper">
+                        <table class="hts-table">
+                            <thead>
+                                <tr>
+                                    <th>거래소</th>
+                                    <th>종목명</th>
+                                    <th class="text-right">매수단가</th>
+                                    <th class="text-right">현재단가</th>
+                                    <th class="text-right">수량</th>
+                                    <th class="text-right">평가금액</th>
+                                    <th class="text-right">평가손익</th>
+                                    <th class="text-right">수익률</th>
+                                    <th class="text-center">명령</th>
+                                </tr>
+                            </thead>
+                            <tbody id="asset-list">
+                                <!-- JS 동적 렌더링 -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>
