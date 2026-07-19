@@ -19,7 +19,6 @@ function startRealTimeUpdate() {
 
 // 명칭 또는 코드로 데이터를 가져오는 터널
 async function fetchPriceAndCodeByName(nameOrCode) {
-    // 1단계: 사용자가 이미 6자리 숫자인 종목코드를 입력한 경우 (프록시 차단 없음, 대역폭 직통)
     const isCode = /^[0-9]{6}$/.test(nameOrCode);
     if (isCode) {
         try {
@@ -33,11 +32,10 @@ async function fetchPriceAndCodeByName(nameOrCode) {
                 };
             }
         } catch(e) {
-            console.log("직통 코드 조회 실패, 프록시로 전환");
+            console.log("직통 코드 조회 실패");
         }
     }
 
-    // 2단계: 종목 이름으로 입력한 경우 (해외 프록시 우회)
     try {
         const targetUrl = `https://finance.naver.com/api/sise/searchItemList.naver?keyword=${encodeURIComponent(nameOrCode)}`;
         const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
@@ -60,7 +58,7 @@ async function fetchPriceAndCodeByName(nameOrCode) {
     return null;
 }
 
-// 실시간 가격 주기적 동기화 (차단 방지 직통 주소 우선 활용)
+// 실시간 가격 주기적 동기화
 async function fetchLivePrices() {
     const assets = getAssets();
     if (assets.length === 0) return;
@@ -70,7 +68,6 @@ async function fetchLivePrices() {
     for (let asset of assets) {
         if (asset.exchange === 'KRX' && asset.stockCode) {
             try {
-                // 브라우저에서 직접 호출해도 CORS 차단이 없는 네이버 실시간 API 핵심 주소
                 const directUrl = `https://polling.finance.naver.com/api/realtime/domestic/stock/${asset.stockCode}`;
                 const res = await fetch(directUrl);
                 const data = await res.json();
@@ -83,7 +80,6 @@ async function fetchLivePrices() {
                     }
                 }
             } catch (e) {
-                // 직통 주소 실패 시 백업 검색 엔진 가동
                 const stockData = await fetchPriceAndCodeByName(asset.name);
                 if (stockData && stockData.price > 0 && asset.currentPrice !== stockData.price) {
                     asset.currentPrice = stockData.price;
@@ -99,7 +95,7 @@ async function fetchLivePrices() {
     }
 }
 
-// 신규 종목 등록
+// 신규 종목 등록 (에러 없도록 안전망 강화)
 async function addAsset() {
     const exchange = document.getElementById('asset-exchange').value;
     const name = document.getElementById('asset-name').value.trim();
@@ -111,25 +107,26 @@ async function addAsset() {
         alert('매수단가와 수량을 정확히 입력하세요.'); return; 
     }
 
-    const btn = document.querySelector('.btn-primary || button[onclick="addAsset()"]');
+    // 오타가 있던 버그 수정 코드 (가장 안전한 태그 선택으로 변경)
+    const btn = document.querySelector('.btn-primary') || document.querySelector('button[onclick="addAsset()"]');
     if(btn) {
         btn.innerText = "⚡ 등록 처리 중...";
         btn.disabled = true;
     }
 
-    let stockCode = /^[0-9]{6}$/.test(name) ? name : null;
+    let stockCode = /^[0-9]{6}$/.test(name) ? name : "";
     let currentPrice = buyPrice;
-    let displayName = name;
 
+    // 비동기 조회가 실패하거나 딜레이가 생겨도 무조건 등록 루프를 타게 설계
     if (exchange === 'KRX') {
-        const stockData = await fetchPriceAndCodeByName(name);
-        if (stockData) {
-            stockCode = stockData.code;
-            currentPrice = stockData.price;
-        } else {
-            // [핵심 패치] 프록시 차단 등으로 검색 실패해도 절대 튕기지 않고 우선 등록 허용!
-            console.log("실시간 조회 실패 - 입력값 기반 강제 등록 진행");
-            if(!stockCode) stockCode = ""; 
+        try {
+            const stockData = await fetchPriceAndCodeByName(name);
+            if (stockData) {
+                stockCode = stockData.code;
+                currentPrice = stockData.price;
+            }
+        } catch (e) {
+            console.log("시세 조회 중 오류 발생 - 기본값으로 등록 진행");
         }
     }
 
@@ -137,7 +134,7 @@ async function addAsset() {
     assets.push({
         id: Date.now(),
         exchange,
-        name: displayName,
+        name,
         stockCode, 
         buyPrice,
         currentPrice, 
@@ -146,6 +143,7 @@ async function addAsset() {
     
     localStorage.setItem('invest_assets_hts_v3_offline', JSON.stringify(assets));
 
+    // 입력창 초기화
     document.getElementById('asset-name').value = '';
     document.getElementById('buy-price').value = '';
     document.getElementById('asset-qty').value = '';
