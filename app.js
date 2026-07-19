@@ -17,27 +17,12 @@ function startRealTimeUpdate() {
     }, 5000); // 5초 주기 자동 갱신
 }
 
-// 명칭 또는 코드로 데이터를 가져오는 터널
+// [CORS 완벽 우회] 명칭 또는 코드로 실시간 단가 및 종목정보 가져오기
 async function fetchPriceAndCodeByName(nameOrCode) {
-    const isCode = /^[0-9]{6}$/.test(nameOrCode);
-    if (isCode) {
-        try {
-            const directUrl = `https://polling.finance.naver.com/api/realtime/domestic/stock/${nameOrCode}`;
-            const res = await fetch(directUrl);
-            const data = await res.json();
-            if (data && data.datas && data.datas[0]) {
-                return {
-                    code: nameOrCode,
-                    price: parseInt(data.datas[0].closePrice.replace(/,/g, ''))
-                };
-            }
-        } catch(e) {
-            console.log("직통 코드 조회 실패");
-        }
-    }
-
     try {
+        // 네이버 검색 API 주소
         const targetUrl = `https://finance.naver.com/api/sise/searchItemList.naver?keyword=${encodeURIComponent(nameOrCode)}`;
+        // CORS 제한을 완벽하게 세탁해 주는 AllOrigins 프록시 터널
         const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
 
         const res = await fetch(proxyUrl);
@@ -47,8 +32,9 @@ async function fetchPriceAndCodeByName(nameOrCode) {
             const data = JSON.parse(wrapper.contents);
             if (data && data.length > 0) {
                 return {
-                    code: data[0].code,
-                    price: parseInt(String(data[0].nowPrice))
+                    name: data[0].name,                             // 진짜 종목명 (예: 하나금융지주)
+                    code: data[0].code,                             // 6자리 종목코드
+                    price: parseInt(String(data[0].nowPrice))     // 실시간 현재가
                 };
             }
         }
@@ -58,7 +44,7 @@ async function fetchPriceAndCodeByName(nameOrCode) {
     return null;
 }
 
-// 실시간 가격 주기적 동기화
+// 5초마다 등록된 모든 종목의 실시간 가격을 프록시를 통해 안전하게 갱신
 async function fetchLivePrices() {
     const assets = getAssets();
     if (assets.length === 0) return;
@@ -66,23 +52,21 @@ async function fetchLivePrices() {
     let hasChange = false;
 
     for (let asset of assets) {
-        if (asset.exchange === 'KRX' && asset.stockCode) {
-            try {
-                const directUrl = `https://polling.finance.naver.com/api/realtime/domestic/stock/${asset.stockCode}`;
-                const res = await fetch(directUrl);
-                const data = await res.json();
-                
-                if (data && data.datas && data.datas[0]) {
-                    const realPrice = parseInt(data.datas[0].closePrice.replace(/,/g, ''));
-                    if (realPrice > 0 && asset.currentPrice !== realPrice) {
-                        asset.currentPrice = realPrice;
-                        hasChange = true;
-                    }
-                }
-            } catch (e) {
-                const stockData = await fetchPriceAndCodeByName(asset.name);
-                if (stockData && stockData.price > 0 && asset.currentPrice !== stockData.price) {
+        if (asset.exchange === 'KRX') {
+            // 보안 차단을 피하기 위해 프록시 터널을 경유하여 호출
+            // 검색 키워드는 종목코드(있다면) 혹은 종목명 활용
+            const queryKey = asset.stockCode || asset.name;
+            const stockData = await fetchPriceAndCodeByName(queryKey);
+            
+            if (stockData && stockData.price > 0) {
+                // 실시간 단가가 달라졌다면 업데이트
+                if (asset.currentPrice !== stockData.price) {
                     asset.currentPrice = stockData.price;
+                    hasChange = true;
+                }
+                // 종목코드가 누락되었거나 잘못 잡혔다면 보정
+                if (!asset.stockCode || asset.stockCode !== stockData.code) {
+                    asset.stockCode = stockData.code;
                     hasChange = true;
                 }
             }
@@ -95,38 +79,34 @@ async function fetchLivePrices() {
     }
 }
 
-// 신규 종목 등록 (에러 없도록 안전망 강화)
+// 신규 종목 등록
 async function addAsset() {
     const exchange = document.getElementById('asset-exchange').value;
     const name = document.getElementById('asset-name').value.trim();
     const buyPrice = Number(document.getElementById('buy-price').value);
     const qty = Number(document.getElementById('asset-qty').value);
 
-    if (!name) { alert('종목명 또는 종목코드를 입력하세요.'); return; }
+    if (!name) { alert('종목명을 입력하세요.'); return; }
     if (isNaN(buyPrice) || buyPrice <= 0 || isNaN(qty) || qty <= 0) { 
         alert('매수단가와 수량을 정확히 입력하세요.'); return; 
     }
 
-    // 오타가 있던 버그 수정 코드 (가장 안전한 태그 선택으로 변경)
     const btn = document.querySelector('.btn-primary') || document.querySelector('button[onclick="addAsset()"]');
     if(btn) {
-        btn.innerText = "⚡ 등록 처리 중...";
+        btn.innerText = "⚡ 실시간 조회 중...";
         btn.disabled = true;
     }
 
-    let stockCode = /^[0-9]{6}$/.test(name) ? name : "";
+    let stockCode = "";
     let currentPrice = buyPrice;
+    let displayName = name;
 
-    // 비동기 조회가 실패하거나 딜레이가 생겨도 무조건 등록 루프를 타게 설계
     if (exchange === 'KRX') {
-        try {
-            const stockData = await fetchPriceAndCodeByName(name);
-            if (stockData) {
-                stockCode = stockData.code;
-                currentPrice = stockData.price;
-            }
-        } catch (e) {
-            console.log("시세 조회 중 오류 발생 - 기본값으로 등록 진행");
+        const stockData = await fetchPriceAndCodeByName(name);
+        if (stockData) {
+            stockCode = stockData.code;
+            currentPrice = stockData.price;
+            displayName = stockData.name; // 코드를 넣었어도 진짜 종목명으로 치환
         }
     }
 
@@ -134,7 +114,7 @@ async function addAsset() {
     assets.push({
         id: Date.now(),
         exchange,
-        name,
+        name: displayName,
         stockCode, 
         buyPrice,
         currentPrice, 
@@ -143,7 +123,6 @@ async function addAsset() {
     
     localStorage.setItem('invest_assets_hts_v3_offline', JSON.stringify(assets));
 
-    // 입력창 초기화
     document.getElementById('asset-name').value = '';
     document.getElementById('buy-price').value = '';
     document.getElementById('asset-qty').value = '';
