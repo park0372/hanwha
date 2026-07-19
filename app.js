@@ -1,11 +1,3 @@
-종목코드 대신 '삼성전자', '우리금융지주'처럼 이름만 입력해도 자동으로 실시간 가격을 가져올 수 있도록 코드를 한 단계 업그레이드하겠습니다.
-
-네이버 증권의 내부 검색 API를 한 번 더 거쳐서 [이름 검색 ➔ 종목코드 추출 ➔ 실시간 가격 조회] 순서로 알아서 처리되도록 app.js를 수정하는 방식입니다.
-
-1. app.js (전체 교체)
-기존 app.js 내용을 전부 지우고 아래 코드로 덮어씌워 주세요. 이제 국내주식(KRX)은 이름만 넣어도 동작합니다.
-
-JavaScript
 window.onload = () => {
     render();
     startRealTimeUpdate();
@@ -25,60 +17,74 @@ function startRealTimeUpdate() {
     }, 5000);
 }
 
-// [핵심 변경] 종목명만으로 네이버에서 종목코드를 찾아오는 함수
+// CORS 차단을 방어하기 위해 프록시 주소를 결합하여 종목코드를 검색합니다.
 async function getStockCodeByName(name) {
     try {
-        // 네이버 증권 자동완성/검색 API 활용
-        const searchUrl = `https://ac.finance.naver.com/ac?q=${encodeURIComponent(name)}&q_enc=euc-kr&st=111&r_format=json&r_enc=euc-kr&r_unicode=1&t_koreng=1&r_lt=111`;
-        const res = await fetch(searchUrl);
-        const data = await res.json();
+        const targetUrl = `https://ac.finance.naver.com/ac?q=${encodeURIComponent(name)}&q_enc=euc-kr&st=111&r_format=json&r_enc=euc-kr&r_unicode=1&t_koreng=1&r_lt=111`;
+        // 브라우저 직접 요청 시 차단되는 현상을 막기 위해 공개 프록시를 경유합니다.
+        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
         
-        // 검색 결과 중 가장 첫 번째 종목의 코드를 반환
+        const res = await fetch(proxyUrl);
+        const json = await res.json();
+        const data = JSON.parse(json.contents);
+        
         if (data && data.items && data.items[0] && data.items[0][0]) {
-            return data.items[0][0][0]; // 6자리 종목코드 추출
+            return data.items[0][0][0]; 
         }
     } catch (e) {
-        console.error("종목코드 검색 실패:", e);
+        console.warn("네이버 검색 통신 차단 또는 실패 (수동 연동 모드로 전환):", e);
     }
     return null;
 }
 
-// 실시간 가격 긁어오기
+// 실시간 가격 조회 함수 (에러가 나도 먹통이 되지 않도록 안전장치 강화)
 async function fetchLivePrices() {
     const assets = getAssets();
     if (assets.length === 0) return;
 
+    let hasChange = false;
+
     const promises = assets.map(async (asset) => {
         if (asset.exchange === 'KRX') {
             try {
-                // 1. 만약 저장된 종목코드가 없다면 이름으로 먼저 찾기
                 if (!asset.stockCode) {
                     const code = await getStockCodeByName(asset.name);
-                    if (code) asset.stockCode = code;
+                    if (code) { asset.stockCode = code; hasChange = true; }
                 }
 
-                // 2. 종목코드가 확보되었다면 실시간 가격 조회
                 if (asset.stockCode) {
-                    const priceRes = await fetch(`https://polling.finance.naver.com/api/realtime/domestic/stock/${asset.stockCode}`);
-                    const priceData = await priceRes.json();
+                    const targetPriceUrl = `https://polling.finance.naver.com/api/realtime/domestic/stock/${asset.stockCode}`;
+                    const proxyPriceUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetPriceUrl)}`;
+                    
+                    const priceRes = await fetch(proxyPriceUrl);
+                    const priceJson = await priceRes.json();
+                    const priceData = JSON.parse(priceJson.contents);
+                    
                     if (priceData && priceData.datas && priceData.datas[0]) {
                         const livePrice = parseInt(priceData.datas[0].closePrice.replace(/,/g, ''));
-                        asset.currentPrice = livePrice;
+                        if (asset.currentPrice !== livePrice) {
+                            asset.currentPrice = livePrice;
+                            hasChange = true;
+                        }
                     }
                 }
             } catch (e) {
-                console.error(`${asset.name} 가격 갱신 실패:`, e);
+                console.error(`${asset.name} 가격 업데이트 실패:`, e);
             }
         }
         return asset;
     });
 
     const updatedAssets = await Promise.all(promises);
-    localStorage.setItem('invest_assets_hts_v3_offline', JSON.stringify(updatedAssets));
-    render(true); 
+    
+    // 무한 루프 렌더링을 방지하기 위해 가격 변동이 있을 때만 로컬스토리지 저장 및 렌더링
+    if (hasChange) {
+        localStorage.setItem('invest_assets_hts_v3_offline', JSON.stringify(updatedAssets));
+        render(true); 
+    }
 }
 
-// 종목 추가 (이제 이름만 받아옵니다)
+// 종목 추가 함수 (코드를 못 찾아도 무조건 리스트에 '넘어가도록' 수정)
 async function addAsset() {
     const exchange = document.getElementById('asset-exchange').value;
     const name = document.getElementById('asset-name').value.trim();
@@ -90,14 +96,15 @@ async function addAsset() {
         alert('매수단가와 수량을 정확히 입력하세요.'); return; 
     }
 
-    // 국내주식인 경우 등록할 때 백그라운드에서 코드를 미리 한 번 조회해봅니다.
+    // 로딩 표시 대용 (버튼 비활성화)
+    const btn = document.querySelector('.btn-primary');
+    btn.innerText = "조회 및 등록 중...";
+    btn.disabled = true;
+
     let stockCode = null;
     if (exchange === 'KRX') {
         stockCode = await getStockCodeByName(name);
-        if (!stockCode) {
-            alert('네이버 증권에서 종목을 찾을 수 없습니다. 정확한 종목명을 입력해주세요.');
-            return;
-        }
+        // [핵심 보완] 검색 에러가 나거나 코드를 못 찾아도 alert창으로 막지 않고 일단 진행시킵니다.
     }
 
     const assets = getAssets();
@@ -107,18 +114,25 @@ async function addAsset() {
         name,
         stockCode, 
         buyPrice,
-        currentPrice: buyPrice, 
+        currentPrice: buyPrice, // 초기값은 매수단가
         qty
     });
     
     localStorage.setItem('invest_assets_hts_v3_offline', JSON.stringify(assets));
 
+    // 입력창 비우기 및 버튼 원상복구
     document.getElementById('asset-name').value = '';
     document.getElementById('buy-price').value = '';
     document.getElementById('asset-qty').value = '';
+    btn.innerText = "⚡ 종목 자동 등록";
+    btn.disabled = false;
 
     render();
-    fetchLivePrices();
+    
+    // 등록 즉시 실시간 가격 스캔 작동
+    if (stockCode) {
+        fetchLivePrices();
+    }
 }
 
 // 현재단가 수동 변경 적용
