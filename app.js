@@ -1,30 +1,92 @@
 window.onload = () => {
     render();
+    // 대시보드가 켜지면 5초(5000ms)마다 실시간 가격을 자동으로 가져옵니다.
+    startRealTimeUpdate();
 };
+
+let updateInterval = null;
 
 function getAssets() {
     return JSON.parse(localStorage.getItem('invest_assets_hts_v3_offline') || '[]');
 }
 
-// 수동 종목 추가
+// 실시간 타이머 시작 함수
+function startRealTimeUpdate() {
+    if (updateInterval) clearInterval(updateInterval);
+    
+    // 최초 실행 후 5초 주기로 반복
+    fetchLivePrices();
+    updateInterval = setInterval(() => {
+        fetchLivePrices();
+    }, 5000);
+}
+
+// 네이버 증권에서 실시간 가격을 긁어오는 핵심 함수
+async function fetchLivePrices() {
+    const assets = getAssets();
+    if (assets.length === 0) return;
+
+    // 각 종목별로 가격을 비동기 조회
+    const promises = assets.map(async (asset) => {
+        // 국내 주식(KRX)이고 종목코드(6자리 숫자)가 파싱되는 경우만 처리
+        if (asset.exchange === 'KRX' && asset.stockCode) {
+            try {
+                // 브라우저 CORS 차단 문제를 우회하기 위해 네이버 폴링 API 직접 호출 (CORS 상황에 따라 Proxy 필요할 수 있음)
+                const res = await fetch(`https://polling.finance.naver.com/api/realtime/domestic/stock/${asset.stockCode}`);
+                const data = await res.json();
+                if (data && data.datas && data.datas[0]) {
+                    const livePrice = parseInt(data.datas[0].closePrice.replace(/,/g, ''));
+                    asset.currentPrice = livePrice;
+                }
+            } catch (e) {
+                console.error(`${asset.name} 가격 갱신 실패:`, e);
+            }
+        }
+        return asset;
+    });
+
+    const updatedAssets = await Promise.all(promises);
+    localStorage.setItem('invest_assets_hts_v3_offline', JSON.stringify(updatedAssets));
+    
+    // 데이터를 다 가져왔으면 화면을 실시간 가격 기준으로 다시 그립니다.
+    render(true); 
+}
+
+// 종목 등록 시 이름에서 6자리 종목코드를 자동으로 추출하는 헬퍼 함수
+function extractStockCode(inputString) {
+    const match = inputString.match(/\d{6}/);
+    return match ? match[0] : null;
+}
+
+// 종목 추가 (종목코드 추출 기능 추가)
 function addAsset() {
     const exchange = document.getElementById('asset-exchange').value;
-    const name = document.getElementById('asset-name').value.trim();
+    const inputName = document.getElementById('asset-name').value.trim();
     const buyPrice = Number(document.getElementById('buy-price').value);
     const qty = Number(document.getElementById('asset-qty').value);
 
-    if (!name) { alert('종목명을 입력하세요.'); return; }
+    if (!inputName) { alert('종목명 또는 코드를 입력하세요.'); return; }
     if (isNaN(buyPrice) || buyPrice <= 0 || isNaN(qty) || qty <= 0) { 
         alert('매수단가와 수량을 정확히 입력하세요.'); return; 
+    }
+
+    // 이름에 '우리금융지주 316140' 형태로 넣거나 '316140'만 넣어도 코드를 뽑아냅니다.
+    const stockCode = extractStockCode(inputName);
+    const displayName = stockCode ? inputName.replace(stockCode, '').trim() || stockCode : inputName;
+
+    if (exchange === 'KRX' && !stockCode) {
+        alert('국내 주식은 실시간 조회를 위해 6자리 종목코드를 함께 입력해주세요.\n(예: 우리금융지주 316140 또는 316140)');
+        return;
     }
 
     const assets = getAssets();
     assets.push({
         id: Date.now(),
         exchange,
-        name,
+        name: displayName,
+        stockCode: stockCode, // 추출한 종목코드 저장
         buyPrice,
-        currentPrice: buyPrice, // 최초 등록 시 매수단가와 동일하게 세팅
+        currentPrice: buyPrice, 
         qty
     });
     
@@ -35,9 +97,10 @@ function addAsset() {
     document.getElementById('asset-qty').value = '';
 
     render();
+    fetchLivePrices(); // 등록 후 바로 가격 갱신
 }
 
-// 현재단가 수동 변경 적용
+// 현재단가 수동 변경 적용 (더블 체크용 보존)
 function updateCurrentPrice(id, newPrice) {
     const assets = getAssets();
     const assetIndex = assets.findIndex(asset => asset.id === id);
@@ -57,11 +120,11 @@ function updateCurrentPrice(id, newPrice) {
     }
 }
 
-// [신규 추가] 네이버 주식/코인 검색 팝업 열기 함수
-function searchOnPortal(exchange, name) {
+function searchOnPortal(exchange, name, stockCode) {
+    let queryTerm = stockCode || name;
     let url = "";
     if (exchange === "KRX") {
-        url = `https://search.naver.com/search.naver?query=${encodeURIComponent(name + " 주가")}`;
+        url = `https://search.naver.com/search.naver?query=${encodeURIComponent(queryTerm + " 주가")}`;
     } else if (exchange === "NASDAQ") {
         url = `https://search.naver.com/search.naver?query=${encodeURIComponent(name + " 주식")}`;
     } else if (exchange === "CRYPTO") {
@@ -78,16 +141,22 @@ function deleteAsset(id) {
     render();
 }
 
-function render() {
+// 화면 렌더링 함수 (isLoop 매개변수로 실시간 갱신 중 포커스 끊김 방지)
+function render(isLoop = false) {
     const assets = getAssets();
     const listBody = document.getElementById('asset-list');
     if (!listBody) return;
+    
+    // 사용자가 현재 단가를 손으로 직접 수정 중(Focus)이라면 실시간 루프가 화면을 초기화하지 않도록 방어
+    if (isLoop && document.activeElement && document.activeElement.classList.contains('editable-price')) {
+        return; 
+    }
+
     listBody.innerHTML = '';
 
     let totalBuy = 0;
     let totalNow = 0;
 
-    // 수익률 내림차순 정렬
     assets.sort((a,b) => ((b.currentPrice - b.buyPrice)/b.buyPrice) - ((a.currentPrice - a.buyPrice)/a.buyPrice));
 
     assets.forEach(asset => {
@@ -105,10 +174,9 @@ function render() {
         tr.className = profit > 0 ? 'row-up' : (profit < 0 ? 'row-down' : '');
         tr.innerHTML = `
             <td><span class="badge-${asset.exchange}">${asset.exchange}</span></td>
-            <td class="cell-name"><strong>${asset.name}</strong></td>
+            <td class="cell-name"><strong>${asset.name}</strong> ${asset.stockCode ? `<span style="font-size:11px; color:#697280;">${asset.stockCode}</span>` : ''}</td>
             <td class="text-right">${Math.round(asset.buyPrice).toLocaleString()}원</td>
             
-            <!-- 수동 수정 칸 컴팩트하게 구성 + 우측 검색 보조 버튼 배치 -->
             <td class="text-center">
                 <div class="price-edit-container">
                     <span class="editable-price live-price" contenteditable="true" 
@@ -116,7 +184,7 @@ function render() {
                         onkeypress="if(event.keyCode==13) {this.blur(); return false;}">
                         ${Math.round(asset.currentPrice).toLocaleString()}원
                     </span>
-                    <button class="btn-search-help" onclick="searchOnPortal('${asset.exchange}', '${asset.name}')" title="네이버에서 시세 검색">🔍</button>
+                    <button class="btn-search-help" onclick="searchOnPortal('${asset.exchange}', '${asset.name}', '${asset.stockCode || ''}')" title="네이버에서 시세 검색">🔍</button>
                 </div>
             </td>
             
@@ -151,6 +219,7 @@ function render() {
     drawChart(assets);
 }
 
+// 차트 그리기 코드는 그대로 유지
 function drawChart(assets) {
     const canvas = document.getElementById('portfolioChart');
     if (!canvas) return;
@@ -200,3 +269,30 @@ function drawChart(assets) {
     ctx.arc(canvas.width/2, canvas.height/2, 55, 0, 2 * Math.PI);
     ctx.fill();
 }
+2. index.html 수정
+상태바 디자인을 실시간 작동 상태에 알맞게 수정합니다. 탑 네비바 부분과 입력창 안내 텍스트 부근을 [ONLINE] 및 자동 업데이트 구조로 감지할 수 있도록 직관적으로 고쳤습니다.
+
+HTML
+<!-- index.html 내의 <header> 부분과 카드 <h3> 타이틀 부분을 아래처럼 교체해 주세요 -->
+
+<header class="hts-header">
+    <div class="logo">⚡ HTS <span class="pro-tag">PRO v3.0</span></div>
+    <!-- OFFLINE에서 실시간 연동인 🟢 ONLINE 상태로 문구 변경 -->
+    <div class="system-status" style="color: #10b981;">💻 실시간 가격 연동 시스템 [ONLINE] 🟢</div>
+</header>
+
+<!-- 중략 -->
+
+<div class="form-group">
+    <label>종목명 또는 심볼 (국내주식은 종목코드 포함 필수)</label>
+    <!-- 플레이스홀더 가이드 보강 -->
+    <input id="asset-name" type="text" placeholder="예: 우리금융지주 316140 또는 005930" autocomplete="off">
+</div>
+
+<!-- 중략 -->
+
+<div class="right-panel">
+    <div class="hts-card list-card">
+        <h3><span class="bullet">■</span> 보유 잔고 현황 (5초 주기 자동 업데이트)</h3>
+        <p class="table-notice">※ 네이버 증권 데이터와 동기화되어 실시간 반영됩니다. 단가를 수동 강제 수정하려면 숫자를 클릭하세요.</p>
+<!-- 이하 동일 -->
