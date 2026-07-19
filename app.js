@@ -2,52 +2,92 @@ window.onload = () => {
     // 앱 로드 시 기존 데이터를 기반으로 렌더링을 시도합니다.
     render();
     
-    // 자동 새로고침(setInterval)은 더 이상 의미가 없으므로 완전히 제거했습니다.
-    // 데이터는 사용자가 명시적으로 '시세 새로고침' 버튼을 눌렀을 때만 갱신됩니다.
+    // 자동 새로고침(setInterval)은 제거되었습니다.
 };
 
 function getAssets() {
     return JSON.parse(localStorage.getItem('invest_assets_hts_v3') || '[]');
 }
 
-// [가장 중요한 수정] 실시간 시세 조회 함수를 '새로운 이미지 속 가격'으로 수정
-function fetchLivePrice(exchange, name) {
-    // 1. [핵심] 사용자님이 새로 주신 이미지(image_2.png)에 표시된 실제 '최신 현재단가'를 고정 가격으로 입력합니다.
-    const fixedPrices = {
-        '하나금융지주': 136800, // [수정] 이미지 image_2.png의 실제 최신 현재단가 (136,800원)
-        '우리금융지주': 50335   // (이 종목은 이전 데이터 그대로 유지)
-    };
-    
-    // 2. 등록하려는 종목명이 이미지 속 고정 가격 목록에 있으면 그 가격을 반환합니다.
-    //    이를 통해 이미지와 동일한 데이터를 가진 것처럼 시뮬레이션할 수 있습니다.
-    if (fixedPrices[name]) {
-        return fixedPrices[name];
+// [가상 종목 데이터베이스] 
+// 실시간 연동이 불가능하므로, 코드 내부에 주요 종목의 가상 가격 데이터를 미리 정의합니다.
+// 이 데이터는 검색 및 초기 가격 입력 용도로만 사용됩니다.
+const virtualSymbolDB = {
+    'KRX': [
+        { name: '삼성전자', symbol: '005930', price: 75200 },
+        { name: 'SK하이닉스', symbol: '000660', price: 185500 },
+        { name: '카카오', symbol: '035720', price: 53100 },
+        { name: 'NAVER', symbol: '035420', price: 208000 },
+        { name: '우리금융지주', symbol: '316140', price: 50335 }, // 사용자 지정 과거 가격
+        { name: '하나금융지주', symbol: '086790', price: 136800 } // 사용자 지정 최신 가격
+    ],
+    'NASDAQ': [
+        { name: 'Apple', symbol: 'AAPL', price: 255000 }, // 가상 달러 가격
+        { name: 'Tesla', symbol: 'TSLA', price: 318000 },
+        { name: 'Microsoft', symbol: 'MSFT', price: 420000 },
+        { name: 'Google', symbol: 'GOOGL', price: 215000 }
+    ],
+    'CRYPTO': [
+        { name: 'Bitcoin', symbol: 'BTC', price: 98000000 },
+        { name: 'Ethereum', symbol: 'ETH', price: 4600000 },
+        { name: 'Ripple', symbol: 'XRP', price: 850 }
+    ]
+};
+
+// [새 기능] 종목명 입력 시 가상 DB에서 검색하여 자동 완성 목록을 보여주는 함수
+function searchSymbol(keyword) {
+    const exchange = document.getElementById('asset-exchange').value;
+    const searchResults = document.getElementById('search-results');
+    searchResults.innerHTML = ''; // 기존 검색 결과 초기화
+
+    if (!keyword) {
+        searchResults.style.display = 'none';
+        return;
     }
-    
-    // 3. 만약 이미지에 없는 다른 종목을 등록하려 한다면, 
-    //    기존 예시 종목들의 기본 고정 가격을 사용합니다. 랜덤 변동은 없습니다.
-    const mockPrices = {
-        '삼성전자': 75000,
-        'AAPL': 250000,
-        'BTC': 95000000,
-        'SK하이닉스': 180000,
-        'TSLA': 320000
-    };
-    
-    return mockPrices[name] || 50000; // 등록되지 않은 종목은 고정 5만원
+
+    const db = virtualSymbolDB[exchange] || [];
+    const filtered = db.filter(item => 
+        item.name.toLowerCase().includes(keyword.toLowerCase()) || 
+        item.symbol.toLowerCase().includes(keyword.toLowerCase())
+    );
+
+    if (filtered.length > 0) {
+        filtered.forEach(item => {
+            const li = document.createElement('li');
+            li.innerHTML = `<strong>${item.name}</strong> (${item.symbol}) - ${Math.round(item.price).toLocaleString()}원`;
+            // 검색된 종목 클릭 시 클릭 이벤트 핸들러 등록
+            li.onclick = () => selectSymbol(item);
+            searchResults.appendChild(li);
+        });
+        searchResults.style.display = 'block';
+    } else {
+        searchResults.style.display = 'none';
+    }
 }
+
+// [새 기능] 검색된 종목을 선택했을 때 실행되는 함수
+function selectSymbol(item) {
+    document.getElementById('asset-name').value = item.name; // 종목명 입력
+    document.getElementById('buy-price').value = item.price; // [핵심] 가상 가격 자동 입력
+    document.getElementById('search-results').style.display = 'none'; // 검색 결과 숨김
+}
+
+// 기존 fetchLivePrice 함수는 이제 사용되지 않습니다. (가격은 addAsset에서 직접 입력)
 
 function addAsset() {
     const exchange = document.getElementById('asset-exchange').value;
     const name = document.getElementById('asset-name').value.trim();
+    // [수정] 매수단가는 이제 검색 시 자동 입력되거나 사용자가 직접 입력한 값을 사용합니다.
     const buyPrice = Number(document.getElementById('buy-price').value);
     const qty = Number(document.getElementById('asset-qty').value);
 
     if (!name) { alert('종목명을 입력하세요.'); return; }
-    if (buyPrice <= 0 || qty <= 0) { alert('매수단가와 수량을 정확히 입력하세요.'); return; }
+    // [수정] 매수단가 확인 로직 추가
+    if (isNaN(buyPrice) || buyPrice <= 0) { alert('매수단가를 정확히 입력하세요.'); return; }
+    if (qty <= 0) { alert('수량을 정확히 입력하세요.'); return; }
 
-    // [수정] 수정된 fetchLivePrice 함수를 사용하여, 이미지 속 실제 가격을 가져옵니다.
-    const currentPrice = fetchLivePrice(exchange, name);
+    // 현재단가는 초기 등록 시 매수단가와 동일하게 설정합니다.
+    const currentPrice = buyPrice; 
 
     const assets = getAssets();
     assets.push({
@@ -55,7 +95,7 @@ function addAsset() {
         exchange,
         name,
         buyPrice,
-        currentPrice,
+        currentPrice, // 이 가격은 나중에 테이블에서 직접 수정 가능합니다.
         qty
     });
     
@@ -69,19 +109,28 @@ function addAsset() {
     render();
 }
 
-// [수정] 이 함수는 더 이상 랜덤 변동을 일으키지 않습니다.
-// 대신, 사용자가 명시적으로 '시세 새로고침' 버튼을 눌렀을 때 fetchLivePrice를 다시 호출하여
-// '새로운 이미지 속의 고정된 최신 가격'으로 데이터를 강제로 맞춥니다.
-function refreshLivePrices() {
+// [수정] 가격 수정 함수는 이전과 동일합니다. 테이블에서 직접 수정합니다.
+function updateCurrentPrice(id, newPrice) {
     const assets = getAssets();
-    if (assets.length === 0) return;
+    const assetIndex = assets.findIndex(asset => asset.id === id);
+    
+    if (assetIndex !== -1) {
+        const priceNum = Number(newPrice.replace(/,/g, ''));
+        if (!isNaN(priceNum) && priceNum >= 0) {
+            assets[assetIndex].currentPrice = priceNum;
+            localStorage.setItem('invest_assets_hts_v3', JSON.stringify(assets));
+            render();
+        } else {
+            alert('올바른 가격(숫자)을 입력하세요.');
+            render();
+        }
+    }
+}
 
-    assets.forEach(asset => {
-        // [수정] 이미지 속 고정 가격 함수를 다시 호출하여 가격을 맞춥니다.
-        asset.currentPrice = fetchLivePrice(asset.exchange, asset.name);
-    });
-
-    localStorage.setItem('invest_assets_hts_v3', JSON.stringify(assets));
+// [수정] 시세 새로고침 함수는 이제 기능을 상실했습니다. (실시간 연동이 없으므로)
+// 사용자 알림을 띄우는 것으로 변경합니다.
+function refreshLivePrices() {
+    alert('현재 구조에서는 실시간 시세 연동이 불가능합니다. 테이블의 현재단가를 직접 수정해 주세요.');
     render();
 }
 
@@ -127,12 +176,12 @@ function importData(event) {
 function render() {
     const assets = getAssets();
     const listBody = document.getElementById('asset-list');
+    if (!listBody) return;
     listBody.innerHTML = '';
 
     let totalBuy = 0;
     let totalNow = 0;
 
-    // 수익률 기준 정렬 (내림차순)
     assets.sort((a,b) => ((b.currentPrice - b.buyPrice)/b.buyPrice) - ((a.currentPrice - a.buyPrice)/a.buyPrice));
 
     assets.forEach(asset => {
@@ -147,13 +196,19 @@ function render() {
         const pClass = profit > 0 ? 'text-up' : (profit < 0 ? 'text-down' : 'text-neutral');
 
         const tr = document.createElement('tr');
-        // 수익/손실에 따른 행 배경색 설정
         tr.className = profit > 0 ? 'row-up' : (profit < 0 ? 'row-down' : '');
         tr.innerHTML = `
             <td><span class="badge-${asset.exchange}">${asset.exchange}</span></td>
             <td class="cell-name"><strong>${asset.name}</strong></td>
             <td class="text-right">${Math.round(asset.buyPrice).toLocaleString()}원</td>
-            <td class="text-right live-price">${Math.round(asset.currentPrice).toLocaleString()}원</td>
+            
+            <!-- 현재단가 칸은 클릭하여 직접 수정 가능 -->
+            <td class="text-right live-price editable-price" contenteditable="true" 
+                onblur="updateCurrentPrice(${asset.id}, this.innerText)" 
+                onkeypress="if(event.keyCode==13) {this.blur(); return false;}">
+                ${Math.round(asset.currentPrice).toLocaleString()}원
+            </td>
+            
             <td class="text-right">${asset.qty.toLocaleString()}</td>
             <td class="text-right">${Math.round(itemNowTotal).toLocaleString()}원</td>
             <td class="text-right ${pClass} weight-bold">${profit > 0 ? '+' : ''}${Math.round(profit).toLocaleString()}원</td>
@@ -229,8 +284,7 @@ function drawChart(assets) {
         legendContainer.appendChild(item);
     });
 
-    // 도넛 차트 효과를 위한 중앙 원 그리기
-    ctx.fillStyle = '#1e222d'; // 배경색과 동일하게
+    ctx.fillStyle = '#1e222d';
     ctx.beginPath();
     ctx.arc(canvas.width/2, canvas.height/2, 55, 0, 2 * Math.PI);
     ctx.fill();
