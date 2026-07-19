@@ -1,86 +1,87 @@
 * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Consolas', 'Malgun Gothic', sans-serif; }
-body { background: #131722; color: #d1d4dc; padding: 10px; }
 
-.hts-container { max-width: 1600px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+/* 딥 테마로 전체적인 색상 톤 다운 및 고급화 */
+body { background: #0f111a; color: #bdc2d0; padding: 15px; }
 
-/* HTS 탑 네비바: 버튼 그룹 제거 후 정리 */
-.hts-header { background: #1c2030; padding: 10px 20px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #2a2e39; }
-.logo { font-size: 18px; font-weight: bold; color: #fff; letter-spacing: 1px; }
-.pro-tag { background: #29a760; color: #fff; font-size: 11px; padding: 2px 5px; border-radius: 3px; vertical-align: top; font-weight: bold; }
-/* 시스템 상태 색상 변경 (초록 -> 회색, 오프라인 강조) */
-.system-status { font-size: 12px; color: #848e9c; }
+.hts-container { max-width: 1650px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
 
-/* 메인 그리드 및 패널 */
-.hts-grid { display: flex; flex-direction: column; gap: 12px; }
-.grid-row-top { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+/* 네비바 색상 변경 */
+.hts-header { background: #151824; padding: 12px 20px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #222638; }
+.logo { font-size: 20px; font-weight: bold; color: #ffffff; letter-spacing: 1px; }
+.pro-tag { background: #10b981; color: #fff; font-size: 11px; padding: 2px 6px; border-radius: 3px; vertical-align: top; font-weight: bold; margin-left: 4px; }
+.system-status { font-size: 12px; color: #697280; font-weight: bold; }
 
-.left-panel, .right-panel { display: flex; flex-direction: column; gap: 12px; width: 100%; }
+/* 대시보드 구조 및 카드 인테리어 */
+.hts-grid { display: flex; flex-direction: column; gap: 14px; }
+.grid-row-top { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+
+.left-panel, .right-panel { display: flex; flex-direction: column; gap: 14px; width: 100%; }
 @media (min-width: 1100px) {
-    .hts-grid { display: grid; grid-template-columns: 380px 1fr; gap: 12px; }
+    .hts-grid { display: grid; grid-template-columns: 390px 1fr; gap: 14px; }
     .grid-row-top { grid-column: 1 / span 2; }
 }
 
-/* KPI 카드 및 HTS 카드 공통 스타일 */
-.kpi-card { background: #1e222d; border: 1px solid #2a2e39; border-radius: 4px; padding: 15px; display: flex; flex-direction: column; justify-content: space-between; }
-.kpi-card .label { font-size: 12px; color: #848e9c; margin-bottom: 5px; }
-.kpi-card .value { font-size: 22px; font-weight: bold; letter-spacing: -0.5px; }
+/* 상단 정보 카드 */
+.kpi-card { background: #151824; border: 1px solid #222638; border-radius: 6px; padding: 18px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.15); }
+.kpi-card .label { font-size: 12px; color: #697280; font-weight: bold; }
+.kpi-card .value { font-size: 24px; font-weight: bold; color: #ffffff; }
 
-.hts-card { background: #1e222d; border: 1px solid #2a2e39; padding: 16px; border-radius: 4px; position: relative; }
-.hts-card h3 { font-size: 13px; color: #fff; margin-bottom: 14px; border-left: 3px solid #29a760; padding-left: 8px; }
+/* 일반 패널 카드 */
+.hts-card { background: #151824; border: 1px solid #222638; padding: 20px; border-radius: 6px; box-shadow: 0 4px 6px rgba(0,0,0,0.15); }
+.hts-card h3 { font-size: 14px; color: #ffffff; margin-bottom: 16px; border-left: 4px solid #10b981; padding-left: 8px; }
 
-/* 입력 필드 및 버튼 스타일 */
-.form-group { margin-bottom: 12px; }
-.form-group label { display: block; font-size: 11px; color: #848e9c; margin-bottom: 4px; }
-input, select { width: 100%; background: #131722; border: 1px solid #2a2e39; padding: 8px; color: #fff; border-radius: 3px; font-size: 13px; }
-input:focus, select:focus { border-color: #29a760; outline: none; }
+/* 입출력 컴포넌트 */
+.form-group { margin-bottom: 14px; }
+.form-group label { display: block; font-size: 12px; color: #697280; margin-bottom: 6px; font-weight: bold; }
+input, select { width: 100%; background: #0f111a; border: 1px solid #282d42; padding: 10px; color: #ffffff; border-radius: 4px; font-size: 13px; transition: 0.2s; }
+input:focus, select:focus { border-color: #10b981; outline: none; background: #131622; }
 
-button { border: none; border-radius: 3px; font-weight: bold; cursor: pointer; transition: 0.2s; }
-.btn-primary { width: 100%; padding: 10px; background: #29a760; color: #fff; font-size: 13px; }
-.btn-primary:hover { background: #21884e; }
-.btn-delete { background: #2a2e39; color: #ff4d4d; padding: 3px 8px; font-size: 11px; border: 1px solid #ff4d4d; }
-.btn-delete:hover { background: #ff4d4d; color: #fff; }
+/* 버튼 색상 조절 */
+button { border: none; border-radius: 4px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+.btn-primary { width: 100%; padding: 12px; background: #10b981; color: #ffffff; font-size: 14px; }
+.btn-primary:hover { background: #059669; }
+.btn-delete { background: #1e2235; color: #f24b4b; padding: 4px 10px; font-size: 12px; border: 1px solid #f24b4b; }
+.btn-delete:hover { background: #f24b4b; color: #ffffff; }
 
-/* 차트 및 테이블 스타일 */
-.chart-container { display: flex; flex-direction: column; align-items: center; gap: 10px; }
-.legend-container { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 5px; font-size: 11px; margin-top: 5px; }
-.legend-item { display: flex; align-items: center; gap: 5px; }
-.color-box { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
+/* 현재단가 영역 정렬 및 보조 검색 단추 */
+.price-edit-container { display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; }
+.btn-search-help { background: #222638; font-size: 12px; padding: 3px 6px; border: 1px solid #333952; color: #bdc2d0; border-radius: 3px; }
+.btn-search-help:hover { background: #333952; color: #fff; }
 
-/* 테이블 상단 안내 문구 */
-.table-notice { font-size: 11px; color: #848e9c; margin-bottom: 10px; padding-left: 5px; }
-
+/* 테이블 인테리어 개편 */
+.table-notice { font-size: 12px; color: #697280; margin-bottom: 12px; background: #0f111a; padding: 8px 12px; border-left: 3px solid #3b92f7; border-radius: 0 4px 4px 0; }
 .table-wrapper { overflow-x: auto; }
 .hts-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.hts-table th { background: #171b26; color: #848e9c; padding: 10px; font-weight: normal; font-size: 12px; border-bottom: 1px solid #2a2e39; text-align: left; }
-.hts-table td { padding: 10px; border-bottom: 1px solid #2a2e39; }
+.hts-table th { background: #0f111a; color: #697280; padding: 12px 10px; font-weight: bold; font-size: 12px; border-bottom: 2px solid #222638; text-align: left; }
+.hts-table td { padding: 12px 10px; border-bottom: 1px solid #1e2235; color: #e2e8f0; }
 
-/* [핵심 추가] 가격 수동 업데이트 칸 강조 스타일 (이미지 반영) */
-.editable-price { cursor: pointer; display: block; width: 100%; border-radius: 3px; transition: 0.2s; }
-.editable-price:hover { background: rgba(0, 255, 136, 0.05); }
-.editable-price:focus { background: rgba(0, 255, 136, 0.1); border-color: rgba(0, 255, 136, 0.5); outline: none; }
+/* 수동 입력 포커스 피드백 효과 */
+.editable-price { cursor: pointer; padding: 4px 8px; border-radius: 4px; transition: 0.2s; border: 1px solid transparent; display: inline-block; min-width: 80px; text-align: right; }
+.editable-price:hover { background: #1e2235; border-color: #333952; }
+.editable-price:focus { background: #0f111a; border: 1px dashed #3b92f7; outline: none; box-shadow: 0 0 6px rgba(59, 146, 247, 0.4); }
 
-/* 이미지에서 강조된 점선 파란색 테두리 효과 (포커스 시) */
-.editable-price[contenteditable="true"]:focus {
-    border: 1px dashed #4da6ff; /* 이미지의 점선 파란색 */
-    box-shadow: 0 0 5px rgba(77, 166, 255, 0.3);
-}
+/* 차트 레이아웃 */
+.chart-container { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.legend-container { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 12px; margin-top: 5px; }
+.legend-item { display: flex; align-items: center; gap: 6px; }
+.color-box { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
 
-/* 뱃지 및 색상 유틸리티 */
-[class^="badge-"] { padding: 2px 6px; border-radius: 3px; font-size: 10px; font-weight: bold; }
-.badge-KRX { background: #ff4d4d; color: #fff; }
-.badge-NASDAQ { background: #4da6ff; color: #fff; }
-.badge-CRYPTO { background: #ffb347; color: #131722; }
+/* 구분 뱃지 */
+[class^="badge-"] { padding: 2px 6px; border-radius: 3px; font-size: 10px; font-weight: bold; display: inline-block; }
+.badge-KRX { background: rgba(242, 75, 75, 0.15); color: #f24b4b; border: 1px solid rgba(242, 75, 75, 0.3); }
+.badge-NASDAQ { background: rgba(59, 146, 247, 0.15); color: #3b92f7; border: 1px solid rgba(59, 146, 247, 0.3); }
+.badge-CRYPTO { background: rgba(234, 179, 8, 0.15); color: #eab308; border: 1px solid rgba(234, 179, 8, 0.3); }
 
-/* 현재단가 칸 색상 (수동 입력이므로 초록색 유지) */
-.live-price { color: #00ff88; font-weight: bold; }
-.text-up { color: #ff4d4d !important; }
-.text-down { color: #4da6ff !important; }
-.text-neutral { color: #d1d4dc !important; }
+/* 스펙트럼 컬러 유틸리티 */
+.live-price { color: #10b981; font-weight: bold; }
+.text-up { color: #f24b4b !important; }
+.text-down { color: #3b92f7 !important; }
+.text-neutral { color: #bdc2d0 !important; }
 .weight-bold { font-weight: bold; }
 
 .text-right { text-align: right; }
 .text-center { text-align: center; }
 
-/* 행 배경색 설정 */
-.row-up { background: rgba(255, 77, 77, 0.02); }
-.row-down { background: rgba(77, 166, 255, 0.02); }
+/* 열(Row) 하이라이트 투명도 최적화 */
+.row-up { background: rgba(242, 75, 75, 0.01); }
+.row-down { background: rgba(59, 146, 247, 0.01); }
