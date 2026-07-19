@@ -14,30 +14,33 @@ function startRealTimeUpdate() {
     fetchLivePrices();
     updateInterval = setInterval(() => {
         fetchLivePrices();
-    }, 5000);
+    }, 5000); // 5초마다 이름 기반 실시간 동기화
 }
 
-// CORS 차단을 방어하기 위해 프록시 주소를 결합하여 종목코드를 검색합니다.
-async function getStockCodeByName(name) {
+// [핵심 변경] 프록시 없이 이름만으로 네이버 증권에서 실시간 가격과 코드를 한방에 가져오는 함수
+async function fetchPriceAndCodeByName(name) {
     try {
-        const targetUrl = `https://ac.finance.naver.com/ac?q=${encodeURIComponent(name)}&q_enc=euc-kr&st=111&r_format=json&r_enc=euc-kr&r_unicode=1&t_koreng=1&r_lt=111`;
-        // 브라우저 직접 요청 시 차단되는 현상을 막기 위해 공개 프록시를 경유합니다.
-        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
+        // 네이버 통합검색 주가 탭 API (CORS 제한이 없어 브라우저에서 직접 호출 가능)
+        const url = `https://m.stock.naver.com/api/json/search/searchListJson.nhn?keyword=${encodeURIComponent(name)}`;
+        const res = await fetch(url);
+        const data = await res.json();
         
-        const res = await fetch(proxyUrl);
-        const json = await res.json();
-        const data = JSON.parse(json.contents);
-        
-        if (data && data.items && data.items[0] && data.items[0][0]) {
-            return data.items[0][0][0]; 
+        // 검색 결과 중 국내주식(stock) 카테고리 추출
+        if (data && data.result && data.result.stock && data.result.stock.length > 0) {
+            const stockInfo = data.result.stock[0]; // 가장 정확한 첫 번째 검색 결과
+            
+            return {
+                code: stockInfo.code,                                 // 6자리 종목코드
+                price: parseInt(stockInfo.nowPrice.replace(/,/g, '')) // 현재가 (쉼표 제거 후 숫자화)
+            };
         }
     } catch (e) {
-        console.warn("네이버 검색 통신 차단 또는 실패 (수동 연동 모드로 전환):", e);
+        console.error(`[${name}] 네트워크 조회 실패:`, e);
     }
     return null;
 }
 
-// 실시간 가격 조회 함수 (에러가 나도 먹통이 되지 않도록 안전장치 강화)
+// 실시간 가격 주기적 업데이트
 async function fetchLivePrices() {
     const assets = getAssets();
     if (assets.length === 0) return;
@@ -46,30 +49,17 @@ async function fetchLivePrices() {
 
     const promises = assets.map(async (asset) => {
         if (asset.exchange === 'KRX') {
-            try {
+            // 이름만으로 실시간 가격과 코드를 동시에 새로고침
+            const result = await fetchPriceAndCodeByName(asset.name);
+            if (stockData) {
                 if (!asset.stockCode) {
-                    const code = await getStockCodeByName(asset.name);
-                    if (code) { asset.stockCode = code; hasChange = true; }
+                    asset.stockCode = stockData.code;
+                    hasChange = true;
                 }
-
-                if (asset.stockCode) {
-                    const targetPriceUrl = `https://polling.finance.naver.com/api/realtime/domestic/stock/${asset.stockCode}`;
-                    const proxyPriceUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetPriceUrl)}`;
-                    
-                    const priceRes = await fetch(proxyPriceUrl);
-                    const priceJson = await priceRes.json();
-                    const priceData = JSON.parse(priceJson.contents);
-                    
-                    if (priceData && priceData.datas && priceData.datas[0]) {
-                        const livePrice = parseInt(priceData.datas[0].closePrice.replace(/,/g, ''));
-                        if (asset.currentPrice !== livePrice) {
-                            asset.currentPrice = livePrice;
-                            hasChange = true;
-                        }
-                    }
+                if (asset.currentPrice !== stockData.price) {
+                    asset.currentPrice = stockData.price;
+                    hasChange = true;
                 }
-            } catch (e) {
-                console.error(`${asset.name} 가격 업데이트 실패:`, e);
             }
         }
         return asset;
@@ -77,14 +67,13 @@ async function fetchLivePrices() {
 
     const updatedAssets = await Promise.all(promises);
     
-    // 무한 루프 렌더링을 방지하기 위해 가격 변동이 있을 때만 로컬스토리지 저장 및 렌더링
     if (hasChange) {
         localStorage.setItem('invest_assets_hts_v3_offline', JSON.stringify(updatedAssets));
         render(true); 
     }
 }
 
-// 종목 추가 함수 (코드를 못 찾아도 무조건 리스트에 '넘어가도록' 수정)
+// 신규 종목 등록 (오직 이름만 입력받음)
 async function addAsset() {
     const exchange = document.getElementById('asset-exchange').value;
     const name = document.getElementById('asset-name').value.trim();
@@ -96,15 +85,25 @@ async function addAsset() {
         alert('매수단가와 수량을 정확히 입력하세요.'); return; 
     }
 
-    // 로딩 표시 대용 (버튼 비활성화)
     const btn = document.querySelector('.btn-primary');
-    btn.innerText = "조회 및 등록 중...";
+    btn.innerText = "네이버 데이터 동기화 중...";
     btn.disabled = true;
 
     let stockCode = null;
+    let currentPrice = buyPrice;
+
     if (exchange === 'KRX') {
-        stockCode = await getStockCodeByName(name);
-        // [핵심 보완] 검색 에러가 나거나 코드를 못 찾아도 alert창으로 막지 않고 일단 진행시킵니다.
+        // 등록할 때 이름으로 실시간 가격과 코드가 존재하는지 즉시 검증
+        const stockData = await fetchPriceAndCodeByName(name);
+        if (stockData) {
+            stockCode = stockData.code;
+            currentPrice = stockData.price; // 등록하자마자 현재가 반영
+        } else {
+            alert(`'${name}' 종목을 네이버 증권에서 찾을 수 없습니다. 정확한 이름으로 입력해 주세요.`);
+            btn.innerText = "⚡ 종목 자동 등록";
+            btn.disabled = false;
+            return;
+        }
     }
 
     const assets = getAssets();
@@ -114,13 +113,12 @@ async function addAsset() {
         name,
         stockCode, 
         buyPrice,
-        currentPrice: buyPrice, // 초기값은 매수단가
+        currentPrice, 
         qty
     });
     
     localStorage.setItem('invest_assets_hts_v3_offline', JSON.stringify(assets));
 
-    // 입력창 비우기 및 버튼 원상복구
     document.getElementById('asset-name').value = '';
     document.getElementById('buy-price').value = '';
     document.getElementById('asset-qty').value = '';
@@ -128,14 +126,9 @@ async function addAsset() {
     btn.disabled = false;
 
     render();
-    
-    // 등록 즉시 실시간 가격 스캔 작동
-    if (stockCode) {
-        fetchLivePrices();
-    }
 }
 
-// 현재단가 수동 변경 적용
+// 수동 단가 수정 기능
 function updateCurrentPrice(id, newPrice) {
     const assets = getAssets();
     const assetIndex = assets.findIndex(asset => asset.id === id);
@@ -270,7 +263,7 @@ function drawChart(assets) {
         return;
     }
 
-    const colors = ['#f24b4b', '#3b92f7', '#eab308', '#10b981', '#a855f7', '#f43f5e', '#06b6d4'];
+    const colors = ['#3b92f7', '#f24b4b', '#eab308', '#10b981', '#a855f7', '#f43f5e', '#06b6d4'];
     const total = assets.reduce((sum, asset) => sum + (asset.currentPrice * asset.qty), 0);
     
     let startAngle = 0;
