@@ -8,12 +8,10 @@
 </head>
 <body>
     <div class="hts-container">
-        <!-- HTS 탑 네비바: 간소화됨 -->
+        <!-- HTS 탑 네비바 -->
         <header class="hts-header">
             <div class="logo">⚡ HTS <span class="pro-tag">PRO v3.0</span></div>
-            <!-- 실시간 시세 연동 포구 제거됨 -->
-            <div class="system-status">📊 수동 가격 관리 시스템 [OFFLINE]</div>
-            <!-- 오른쪽 버튼 그룹이 삭제됨 -->
+            <div class="system-status">💻 수동 가격 관리 시스템 [OFFLINE]</div>
         </header>
 
         <!-- 메인 대시보드 그리드 -->
@@ -48,13 +46,13 @@
                         <label>거래소 구분</label>
                         <select id="asset-exchange">
                             <option value="KRX">국내주식 (KRX)</option>
-                            <option value="NASDAQ">미국주식 (NASDAQ/NYSE)</option>
-                            <option value="CRYPTO">가상자산 (Upbit/Binance)</option>
+                            <option value="NASDAQ">미국주식 (NASDAQ)</option>
+                            <option value="CRYPTO">가상자산 (CRYPTO)</option>
                         </select>
                     </div>
                     <div class="form-group">
                         <label>종목명 또는 심볼</label>
-                        <input id="asset-name" type="text" placeholder="예: 삼성전자, AAPL, BTC" autocomplete="off">
+                        <input id="asset-name" type="text" placeholder="예: 하나금융지주, LG유플러스, AAPL" autocomplete="off">
                     </div>
                     <div class="form-group">
                         <label>매수단가 (원/달러)</label>
@@ -64,7 +62,6 @@
                         <label>보유 수량 (주/개)</label>
                         <input id="asset-qty" type="number" placeholder="0" step="any">
                     </div>
-                    <!-- 버튼 문구가 '시세 조회 및 편입'에서 '종목 등록'으로 변경 -->
                     <button onclick="addAsset()" class="btn-primary">⚡ 종목 수동 등록</button>
                 </div>
 
@@ -78,11 +75,11 @@
                 </div>
             </div>
 
-            <!-- 우측 보유 잔고 리스트 (가격 수동 업데이트 강조) -->
+            <!-- 우측 보유 잔고 리스트 -->
             <div class="right-panel">
                 <div class="hts-card list-card">
-                    <h3><span class="bullet">■</span> 보유 잔고 현황 (현재단가 수동 업데이트)</h3>
-                    <p class="table-notice">※ '현재단가' 칸을 클릭하여 직접 입력하고 엔터를 치시면 가격이 업데이트됩니다.</p>
+                    <h3><span class="bullet">■</span> 보유 잔고 현황 (단가 수동 업데이트)</h3>
+                    <p class="table-notice">※ 🔍 버튼을 누르면 시세 창이 열립니다. 확인 후 '현재단가' 숫자를 클릭해 입력 후 엔터를 치세요.</p>
                     <div class="table-wrapper">
                         <table class="hts-table">
                             <thead>
@@ -90,7 +87,7 @@
                                     <th>거래소</th>
                                     <th>종목명</th>
                                     <th class="text-right">매수단가</th>
-                                    <th class="text-right">현재단가 (클릭수정)</th>
+                                    <th class="text-center">현재단가 (클릭수정)</th>
                                     <th class="text-right">수량</th>
                                     <th class="text-right">평가금액</th>
                                     <th class="text-right">평가손익</th>
