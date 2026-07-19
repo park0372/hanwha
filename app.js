@@ -1,75 +1,90 @@
 window.onload = () => {
+    createTriggerButton(); // 화면에 연동 제어 버튼 생성
     render();
-    startRealTimeUpdate();
 };
 
 let updateInterval = null;
+let isRealTimeActive = false; // 현재 실시간 연동이 켜져 있는지 여부
 
 function getAssets() {
     return JSON.parse(localStorage.getItem('invest_assets_hts_v3_offline') || '[]');
 }
 
-function startRealTimeUpdate() {
-    if (updateInterval) clearInterval(updateInterval);
-    fetchLivePrices();
-    updateInterval = setInterval(() => {
-        fetchLivePrices();
-    }, 5000); // 5초 주기 자동 동기화
+// 화면 상단 타이틀이나 적절한 위치에 [시세 연동] 버튼을 자동으로 꽂아주는 함수
+function createTriggerButton() {
+    // 이미 버튼이 있다면 중복 생성 방지
+    if (document.getElementById('global-sync-btn')) return;
+
+    const btn = document.createElement('button');
+    btn.id = 'global-sync-btn';
+    btn.innerText = '🔄 실시간 시세 연동 시작';
+    // 대시보드 다크모드와 어울리는 세련된 블루톤 스타일링
+    btn.style = 'position: fixed; top: 20px; right: 20px; padding: 10px 18px; background: #3b92f7; color: #fff; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; z-index: 9999; box-shadow: 0 4px 12px rgba(0,0,0,0.3); transition: all 0.2s;';
+    
+    btn.onclick = () => {
+        if (!isRealTimeActive) {
+            // 실시간 연동 켜기
+            isRealTimeActive = true;
+            btn.innerText = '🛑 시세 연동 중단 (수동 모드)';
+            btn.style.background = '#f24b4b'; // 중단 버튼은 레드톤
+            
+            // 즉시 한 번 땡겨오고, 이후 5초마다 실시간 동기화 루프 가동
+            fetchLivePrices();
+            updateInterval = setInterval(() => {
+                fetchLivePrices();
+            }, 5000);
+        } else {
+            // 실시간 연동 끄기 (다시 안전한 수동 모드로)
+            isRealTimeActive = false;
+            if (updateInterval) clearInterval(updateInterval);
+            btn.innerText = '🔄 실시간 시세 연동 시작';
+            btn.style.background = '#3b92f7';
+        }
+    };
+
+    document.body.appendChild(btn);
 }
 
-// [CORS 차단 제로] 한국거래소(KRX) 공공 데이터 시세 조회 채널
-async function fetchPublicStockPrice(nameOrCode) {
-    try {
-        let url = "";
-        const isCode = /^[0-9]{6}$/.test(nameOrCode);
-        
-        // 공공데이터포털의 차단 없는 금융 시세 서비스 활용
-        if (isCode) {
-            url = `https://apis.data.go.kr/1160100/service/GetStockSecuritiesInfoService/getStockPriceInfo?serviceKey=무료오픈채널&resultType=json&likeSrtnCd=${nameOrCode}&numOfRows=1`;
-        } else {
-            url = `https://apis.data.go.kr/1160100/service/GetStockSecuritiesInfoService/getStockPriceInfo?serviceKey=무료오픈채널&resultType=json&itmsNm=${encodeURIComponent(nameOrCode)}&numOfRows=1`;
-        }
+// 주요 한국 주식 이름 -> 야후 파이낸스 전용 심볼 자동 변환기
+function getYahooSymbol(nameOrCode) {
+    const market = {
+        '삼성전자': '005930.KS',
+        '하나금융지주': '086790.KS',
+        '우리금융지주': '316140.KS',
+        '신한지주': '055550.KS',
+        'KB금융': '105560.KS',
+        '현대차': '005380.KS',
+        'SK하이닉스': '000660.KS',
+        '네이버': '035420.KS',
+        'NAVER': '035420.KS',
+        '카카오': '035720.KS'
+    };
+    
+    const trimmed = nameOrCode.replace(/\s+/g, '');
+    if (market[trimmed]) return market[trimmed];
+    if (/^[0-9]{6}$/.test(trimmed)) return trimmed + ".KS"; 
+    return null;
+}
 
+// 야후 파이낸스 단발성 호출 엔진
+async function fetchYahooPrice(symbol) {
+    if (!symbol) return null;
+    try {
+        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1m&range=1d`;
         const res = await fetch(url);
         const data = await res.json();
         
-        if (data && data.response && data.response.body && data.response.body.items && data.response.body.items.item) {
-            const item = data.response.body.items.item[0];
-            if (item) {
-                return {
-                    name: item.itmsNm,                 // 정확한 종목명
-                    code: item.srtnCd,                 // 단축 코드 (6자리)
-                    price: parseInt(item.clpr)         // 종가/현재가
-                };
-            }
+        if (data && data.chart && data.chart.result && data.chart.result[0]) {
+            const meta = data.chart.result[0].meta;
+            return parseInt(meta.regularMarketPrice);
         }
     } catch (e) {
-        console.error(`[${nameOrCode}] 공공 시세 조회 실패, 백업 채널 시도...`);
-    }
-
-    // [백업 라인] 네이버 웹 크롤링 우회 채널 (금융위 채널 실패 시 작동)
-    try {
-        const query = /^[0-9]{6}$/.test(nameOrCode) ? nameOrCode : nameOrCode;
-        const backupUrl = `https://api.allorigins.win/get?url=${encodeURIComponent('https://polling.finance.naver.com/api/realtime/domestic/stock/' + query)}`;
-        const res = await fetch(backupUrl);
-        const wrapper = await res.json();
-        if (wrapper && wrapper.contents) {
-            const parsed = JSON.parse(wrapper.contents);
-            if(parsed && parsed.datas && parsed.datas[0]) {
-                return {
-                    name: parsed.datas[0].stockName || nameOrCode,
-                    code: query,
-                    price: parseInt(parsed.datas[0].closePrice.replace(/,/g, ''))
-                };
-            }
-        }
-    } catch(err) {
-        console.error("백업 채널도 실패:", err);
+        console.error(`[${symbol}] 시세 조회 실패:`, e);
     }
     return null;
 }
 
-// 5초마다 등록된 KRX 종목들의 현재가를 차단 없이 갱신
+// 버튼이 활성화되었을 때만 도는 주가 동기화 함수
 async function fetchLivePrices() {
     const assets = getAssets();
     if (assets.length === 0) return;
@@ -78,17 +93,11 @@ async function fetchLivePrices() {
 
     for (let asset of assets) {
         if (asset.exchange === 'KRX') {
-            // 종목코드 혹은 종목명 중 존재하는 값으로 조회
-            const targetQuery = asset.stockCode || asset.name;
-            const stockData = await fetchPublicStockPrice(targetQuery);
-            
-            if (stockData && stockData.price > 0) {
-                if (asset.currentPrice !== stockData.price) {
-                    asset.currentPrice = stockData.price;
-                    hasChange = true;
-                }
-                if (!asset.stockCode && stockData.code) {
-                    asset.stockCode = stockData.code;
+            const symbol = getYahooSymbol(asset.stockCode || asset.name);
+            if (symbol) {
+                const livePrice = await fetchYahooPrice(symbol);
+                if (livePrice && livePrice > 0 && asset.currentPrice !== livePrice) {
+                    asset.currentPrice = livePrice;
                     hasChange = true;
                 }
             }
@@ -102,7 +111,7 @@ async function fetchLivePrices() {
 }
 
 // 신규 종목 등록
-async function addAsset() {
+function addAsset() {
     const exchange = document.getElementById('asset-exchange').value;
     const name = document.getElementById('asset-name').value.trim();
     const buyPrice = Number(document.getElementById('buy-price').value);
@@ -113,33 +122,18 @@ async function addAsset() {
         alert('매수단가와 수량을 정확히 입력하세요.'); return; 
     }
 
-    const btn = document.querySelector('.btn-primary') || document.querySelector('button[onclick="addAsset()"]');
-    if(btn) {
-        btn.innerText = "⚡ 국가 시세망 조회 중...";
-        btn.disabled = true;
-    }
-
-    let stockCode = /^[0-9]{6}$/.test(name) ? name : "";
-    let currentPrice = buyPrice;
-    let displayName = name;
-
-    if (exchange === 'KRX') {
-        const stockData = await fetchPublicStockPrice(name);
-        if (stockData) {
-            stockCode = stockData.code;
-            currentPrice = stockData.price;
-            displayName = stockData.name; 
-        }
-    }
+    const symbol = getYahooSymbol(name);
+    let stockCode = name;
+    if (symbol) stockCode = symbol.split('.')[0];
 
     const assets = getAssets();
     assets.push({
         id: Date.now(),
         exchange,
-        name: displayName,
-        stockCode, 
+        name,
+        stockCode: /^[0-9]{6}$/.test(stockCode) ? stockCode : "", 
         buyPrice,
-        currentPrice, 
+        currentPrice: buyPrice, // 최초 등록 시 매수단가로 안전하게 시작
         qty
     });
     
@@ -148,19 +142,16 @@ async function addAsset() {
     document.getElementById('asset-name').value = '';
     document.getElementById('buy-price').value = '';
     document.getElementById('asset-qty').value = '';
-    
-    if(btn) {
-        btn.innerText = "⚡ 종목 자동 등록";
-        btn.disabled = false;
-    }
 
     render();
-    
-    // 등록 완료 직후 실시간 가격 강제 트리거
-    setTimeout(() => { fetchLivePrices(); }, 600);
+
+    // 만약 실시간 연동 버튼이 켜져 있는 상태라면 등록 즉시 가격 동기화 유도
+    if (isRealTimeActive) {
+        setTimeout(() => { fetchLivePrices(); }, 300);
+    }
 }
 
-// 수동 단가 수정 기능
+// 현재단가 수동 수정도 언제든 가능하도록 유지
 function updateCurrentPrice(id, newPrice) {
     const assets = getAssets();
     const assetIndex = assets.findIndex(asset => asset.id === id);
@@ -182,14 +173,7 @@ function updateCurrentPrice(id, newPrice) {
 
 function searchOnPortal(exchange, name, stockCode) {
     let queryTerm = stockCode || name;
-    let url = "";
-    if (exchange === "KRX") {
-        url = `https://search.naver.com/search.naver?query=${encodeURIComponent(queryTerm + " 주가")}`;
-    } else if (exchange === "NASDAQ") {
-        url = `https://search.naver.com/search.naver?query=${encodeURIComponent(name + " 주식")}`;
-    } else if (exchange === "CRYPTO") {
-        url = `https://search.naver.com/search.naver?query=${encodeURIComponent(name + " 시세")}`;
-    }
+    let url = `https://search.naver.com/search.naver?query=${encodeURIComponent(queryTerm + " 주가")}`;
     window.open(url, '_blank', 'width=1000,height=800,scrollbars=yes');
 }
 
