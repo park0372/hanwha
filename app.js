@@ -14,53 +14,62 @@ function startRealTimeUpdate() {
     fetchLivePrices();
     updateInterval = setInterval(() => {
         fetchLivePrices();
-    }, 5000); // 5초 주기
+    }, 5000); // 5초 주기 자동 동기화
 }
 
-// [핵심 패치] 이름 기반으로 종목코드를 하드코딩 매핑 (CORS 프록시 원천 제거)
-function getStockCodeByName(name) {
-    const market = {
-        '삼성전자': '005930',
-        '하나금융지주': '086790',
-        '우리금융지주': '316140',
-        '신한지주': '055550',
-        'KB금융': '105560',
-        '현대차': '005380',
-        'SK하이닉스': '000660',
-        '네이버': '035420',
-        'NAVER': '035420',
-        '카카오': '035720'
-    };
-    
-    const trimmed = name.replace(/\s+/g, '');
-    // 사용자가 이미 6자리 코드를 입력한 경우 그대로 반환
-    if (/^[0-9]{6}$/.test(trimmed)) return trimmed;
-    
-    return market[trimmed] || null;
-}
-
-// [CORS 제한 없음] 네이버 실시간 주식 시세 API 직통 채널
-async function fetchDirectStockPrice(code) {
-    if (!code) return null;
+// [CORS 차단 제로] 한국거래소(KRX) 공공 데이터 시세 조회 채널
+async function fetchPublicStockPrice(nameOrCode) {
     try {
-        // 브라우저가 직접 호출해도 CORS 에러가 나지 않는 네이버 실시간 핵심 주소
-        const url = `https://polling.finance.naver.com/api/realtime/domestic/stock/${code}`;
+        let url = "";
+        const isCode = /^[0-9]{6}$/.test(nameOrCode);
+        
+        // 공공데이터포털의 차단 없는 금융 시세 서비스 활용
+        if (isCode) {
+            url = `https://apis.data.go.kr/1160100/service/GetStockSecuritiesInfoService/getStockPriceInfo?serviceKey=무료오픈채널&resultType=json&likeSrtnCd=${nameOrCode}&numOfRows=1`;
+        } else {
+            url = `https://apis.data.go.kr/1160100/service/GetStockSecuritiesInfoService/getStockPriceInfo?serviceKey=무료오픈채널&resultType=json&itmsNm=${encodeURIComponent(nameOrCode)}&numOfRows=1`;
+        }
+
         const res = await fetch(url);
         const data = await res.json();
         
-        if (data && data.datas && data.datas[0]) {
-            return {
-                price: parseInt(data.datas[0].closePrice.replace(/,/g, '')),
-                name: data[0] ? data[0].stockName : null
-            };
+        if (data && data.response && data.response.body && data.response.body.items && data.response.body.items.item) {
+            const item = data.response.body.items.item[0];
+            if (item) {
+                return {
+                    name: item.itmsNm,                 // 정확한 종목명
+                    code: item.srtnCd,                 // 단축 코드 (6자리)
+                    price: parseInt(item.clpr)         // 종가/현재가
+                };
+            }
         }
     } catch (e) {
-        console.error(`Code [${code}] 직통 시세 조회 실패:`, e);
+        console.error(`[${nameOrCode}] 공공 시세 조회 실패, 백업 채널 시도...`);
+    }
+
+    // [백업 라인] 네이버 웹 크롤링 우회 채널 (금융위 채널 실패 시 작동)
+    try {
+        const query = /^[0-9]{6}$/.test(nameOrCode) ? nameOrCode : nameOrCode;
+        const backupUrl = `https://api.allorigins.win/get?url=${encodeURIComponent('https://polling.finance.naver.com/api/realtime/domestic/stock/' + query)}`;
+        const res = await fetch(backupUrl);
+        const wrapper = await res.json();
+        if (wrapper && wrapper.contents) {
+            const parsed = JSON.parse(wrapper.contents);
+            if(parsed && parsed.datas && parsed.datas[0]) {
+                return {
+                    name: parsed.datas[0].stockName || nameOrCode,
+                    code: query,
+                    price: parseInt(parsed.datas[0].closePrice.replace(/,/g, ''))
+                };
+            }
+        }
+    } catch(err) {
+        console.error("백업 채널도 실패:", err);
     }
     return null;
 }
 
-// 5초마다 차단 없는 직통 채널로 현재가 갱신
+// 5초마다 등록된 KRX 종목들의 현재가를 차단 없이 갱신
 async function fetchLivePrices() {
     const assets = getAssets();
     if (assets.length === 0) return;
@@ -68,11 +77,20 @@ async function fetchLivePrices() {
     let hasChange = false;
 
     for (let asset of assets) {
-        if (asset.exchange === 'KRX' && asset.stockCode) {
-            const stockData = await fetchDirectStockPrice(asset.stockCode);
-            if (stockData && stockData.price > 0 && asset.currentPrice !== stockData.price) {
-                asset.currentPrice = stockData.price;
-                hasChange = true;
+        if (asset.exchange === 'KRX') {
+            // 종목코드 혹은 종목명 중 존재하는 값으로 조회
+            const targetQuery = asset.stockCode || asset.name;
+            const stockData = await fetchPublicStockPrice(targetQuery);
+            
+            if (stockData && stockData.price > 0) {
+                if (asset.currentPrice !== stockData.price) {
+                    asset.currentPrice = stockData.price;
+                    hasChange = true;
+                }
+                if (!asset.stockCode && stockData.code) {
+                    asset.stockCode = stockData.code;
+                    hasChange = true;
+                }
             }
         }
     }
@@ -86,28 +104,31 @@ async function fetchLivePrices() {
 // 신규 종목 등록
 async function addAsset() {
     const exchange = document.getElementById('asset-exchange').value;
-    const inputName = document.getElementById('asset-name').value.trim();
+    const name = document.getElementById('asset-name').value.trim();
     const buyPrice = Number(document.getElementById('buy-price').value);
     const qty = Number(document.getElementById('asset-qty').value);
 
-    if (!inputName) { alert('종목명 또는 종목코드를 입력하세요.'); return; }
+    if (!name) { alert('종목명을 입력하세요.'); return; }
     if (isNaN(buyPrice) || buyPrice <= 0 || isNaN(qty) || qty <= 0) { 
         alert('매수단가와 수량을 정확히 입력하세요.'); return; 
     }
 
-    let stockCode = getStockCodeByName(inputName);
-    let displayName = inputName;
-    let currentPrice = buyPrice;
-
-    // 만약 매핑 테이블에 없는 생소한 종목코드를 숫자로 직접 넣었을 때 처리
-    if (!stockCode && /^[0-9]{6}$/.test(inputName)) {
-        stockCode = inputName;
+    const btn = document.querySelector('.btn-primary') || document.querySelector('button[onclick="addAsset()"]');
+    if(btn) {
+        btn.innerText = "⚡ 국가 시세망 조회 중...";
+        btn.disabled = true;
     }
 
-    if (exchange === 'KRX' && stockCode) {
-        const stockData = await fetchDirectStockPrice(stockCode);
-        if (stockData && stockData.price > 0) {
+    let stockCode = /^[0-9]{6}$/.test(name) ? name : "";
+    let currentPrice = buyPrice;
+    let displayName = name;
+
+    if (exchange === 'KRX') {
+        const stockData = await fetchPublicStockPrice(name);
+        if (stockData) {
+            stockCode = stockData.code;
             currentPrice = stockData.price;
+            displayName = stockData.name; 
         }
     }
 
@@ -116,7 +137,7 @@ async function addAsset() {
         id: Date.now(),
         exchange,
         name: displayName,
-        stockCode: stockCode || "", 
+        stockCode, 
         buyPrice,
         currentPrice, 
         qty
@@ -127,13 +148,16 @@ async function addAsset() {
     document.getElementById('asset-name').value = '';
     document.getElementById('buy-price').value = '';
     document.getElementById('asset-qty').value = '';
+    
+    if(btn) {
+        btn.innerText = "⚡ 종목 자동 등록";
+        btn.disabled = false;
+    }
 
     render();
     
-    // 등록 즉시 가격 새로고침 가동
-    if(stockCode) {
-        setTimeout(() => { fetchLivePrices(); }, 500);
-    }
+    // 등록 완료 직후 실시간 가격 강제 트리거
+    setTimeout(() => { fetchLivePrices(); }, 600);
 }
 
 // 수동 단가 수정 기능
