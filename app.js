@@ -14,33 +14,33 @@ function startRealTimeUpdate() {
     fetchLivePrices();
     updateInterval = setInterval(() => {
         fetchLivePrices();
-    }, 5000); // 5초마다 이름 기반 실시간 동기화
+    }, 5000); // 5초마다 실행
 }
 
-// [핵심 변경] 프록시 없이 이름만으로 네이버 증권에서 실시간 가격과 코드를 한방에 가져오는 함수
+// 이름만으로 네이버 증권 모바일 검색 API에서 코드와 현재가를 통째로 가져오는 함수
 async function fetchPriceAndCodeByName(name) {
     try {
-        // 네이버 통합검색 주가 탭 API (CORS 제한이 없어 브라우저에서 직접 호출 가능)
+        // CORS 제한이 없는 네이버 공식 모바일 검색 경로 활용
         const url = `https://m.stock.naver.com/api/json/search/searchListJson.nhn?keyword=${encodeURIComponent(name)}`;
         const res = await fetch(url);
         const data = await res.json();
         
-        // 검색 결과 중 국내주식(stock) 카테고리 추출
         if (data && data.result && data.result.stock && data.result.stock.length > 0) {
-            const stockInfo = data.result.stock[0]; // 가장 정확한 첫 번째 검색 결과
+            // 가장 연관성이 높은 첫 번째 주식 정보를 타겟팅
+            const stockInfo = data.result.stock[0]; 
             
             return {
-                code: stockInfo.code,                                 // 6자리 종목코드
-                price: parseInt(stockInfo.nowPrice.replace(/,/g, '')) // 현재가 (쉼표 제거 후 숫자화)
+                code: stockInfo.code,
+                price: parseInt(stockInfo.nowPrice.replace(/,/g, ''))
             };
         }
     } catch (e) {
-        console.error(`[${name}] 네트워크 조회 실패:`, e);
+        console.error(`[${name}] 시세 데이터 검색 실패:`, e);
     }
     return null;
 }
 
-// 실시간 가격 주기적 업데이트
+// [오타 수정 완료] 실시간 가격 주기적 동기화
 async function fetchLivePrices() {
     const assets = getAssets();
     if (assets.length === 0) return;
@@ -49,13 +49,16 @@ async function fetchLivePrices() {
 
     const promises = assets.map(async (asset) => {
         if (asset.exchange === 'KRX') {
-            // 이름만으로 실시간 가격과 코드를 동시에 새로고침
-            const result = await fetchPriceAndCodeByName(asset.name);
+            // 이름만으로 실시간 가격 정보 요청
+            const stockData = await fetchPriceAndCodeByName(asset.name); 
+            
             if (stockData) {
+                // 기존에 저장된 코드가 없었다면 새로 채워 넣음
                 if (!asset.stockCode) {
                     asset.stockCode = stockData.code;
                     hasChange = true;
                 }
+                // 실시간 현재가가 변동되었다면 업데이트
                 if (asset.currentPrice !== stockData.price) {
                     asset.currentPrice = stockData.price;
                     hasChange = true;
@@ -67,6 +70,7 @@ async function fetchLivePrices() {
 
     const updatedAssets = await Promise.all(promises);
     
+    // 데이터 변경이 있을 때만 로컬 저장 및 화면을 새로 갱신합니다.
     if (hasChange) {
         localStorage.setItem('invest_assets_hts_v3_offline', JSON.stringify(updatedAssets));
         render(true); 
@@ -93,13 +97,12 @@ async function addAsset() {
     let currentPrice = buyPrice;
 
     if (exchange === 'KRX') {
-        // 등록할 때 이름으로 실시간 가격과 코드가 존재하는지 즉시 검증
         const stockData = await fetchPriceAndCodeByName(name);
         if (stockData) {
             stockCode = stockData.code;
-            currentPrice = stockData.price; // 등록하자마자 현재가 반영
+            currentPrice = stockData.price; 
         } else {
-            alert(`'${name}' 종목을 네이버 증권에서 찾을 수 없습니다. 정확한 이름으로 입력해 주세요.`);
+            alert(`'${name}' 종목을 네이버 증권에서 찾을 수 없습니다. 정확한 한글 이름을 입력해 주세요.`);
             btn.innerText = "⚡ 종목 자동 등록";
             btn.disabled = false;
             return;
