@@ -17,26 +17,47 @@ function startRealTimeUpdate() {
     }, 5000); 
 }
 
-// [보안 우회 및 최신 API 반영] 네이버 증권 최신 HTTPS 검색 API 활용
+// [핵심 변경] 깃허브 페이지의 CORS 제한을 완벽하게 우회하는 이름 검색 함수
 async function fetchPriceAndCodeByName(name) {
     try {
-        // 깃허브 페이지(HTTPS)에서도 절대 차단되지 않는 네이버 공식 최신 API 주소
-        const url = `https://m.stock.naver.com/api/search/stock?keyword=${encodeURIComponent(name)}&page=1&pageSize=10`;
-        const res = await fetch(url);
-        const data = await res.json();
+        // 네이버 최신 API 주소
+        const targetUrl = `https://m.stock.naver.com/api/search/stock?keyword=${encodeURIComponent(name)}&page=1&pageSize=10`;
         
-        // 검색 결과 데이터 바인딩 방식 재설계
-        if (data && data.stocks && data.stocks.length > 0) {
-            // 국내주식(KOSPI/KOSDAQ) 카테고리이거나 종목코드 형식을 가진 첫 번째 항목 선택
-            const stockInfo = data.stocks[0]; 
-            
+        // 깃허브 Pages 보안 차단을 깨기 위한 공용 프록시 우회 경로 적용
+        const proxyUrl = `https://cors-anywhere.herokuapp.com/`; 
+        
+        // 만약 위 프록시가 지연될 경우를 대비한 2차 대체 프록시 라우트 구성
+        const alternativeProxy = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
+
+        let stockInfo = null;
+
+        try {
+            // 1차 시도: 표준 프록시 결합 호출
+            const res = await fetch(proxyUrl + targetUrl, {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            const data = await res.json();
+            if (data && data.stocks && data.stocks.length > 0) {
+                stockInfo = data.stocks[0];
+            }
+        } catch (e) {
+            // 2차 시도: 1차가 막힐 경우 AllOrigins 백업 프록시 작동
+            const res = await fetch(alternativeProxy);
+            const wrapper = await res.json();
+            const data = JSON.parse(wrapper.contents);
+            if (data && data.stocks && data.stocks.length > 0) {
+                stockInfo = data.stocks[0];
+            }
+        }
+        
+        if (stockInfo) {
             return {
-                code: stockInfo.rePnCls || stockInfo.stockCode, // 종목 코드
-                price: parseInt(stockInfo.closePrice.replace(/,/g, '')) // 현재가
+                code: stockInfo.rePnCls || stockInfo.stockCode, 
+                price: parseInt(String(stockInfo.closePrice).replace(/,/g, '')) 
             };
         }
     } catch (e) {
-        console.error(`[${name}] 보안 네트워크 조회 실패:`, e);
+        console.error(`[${name}] CORS 우회 네트워크 조회 최종 실패:`, e);
     }
     return null;
 }
@@ -99,7 +120,7 @@ async function addAsset() {
             stockCode = stockData.code;
             currentPrice = stockData.price; 
         } else {
-            alert(`'${name}' 종목을 네이버 증권에서 찾을 수 없습니다. 정식 명칭으로 입력해 주세요.`);
+            alert(`'${name}' 종목을 네이버 증권에서 찾을 수 없습니다. 정식 명칭으로 다시 입력해 주세요.`);
             btn.innerText = "⚡ 종목 자동 등록";
             btn.disabled = false;
             return;
