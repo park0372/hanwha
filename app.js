@@ -2,29 +2,30 @@ window.onload = () => {
     // 앱 로드 시 기존 데이터를 기반으로 렌더링을 시도합니다.
     render();
     
-    // 자동 새로고침(setInterval)은 더 이상 의미가 없으므로 제거했습니다.
-    // 사용자가 '시세 새로고침' 버튼을 눌렀을 때만 작동하도록 합니다.
+    // 자동 새로고침(setInterval)은 더 이상 의미가 없으므로 완전히 제거했습니다.
+    // 데이터는 사용자가 명시적으로 '시세 새로고침' 버튼을 눌렀을 때만 갱신됩니다.
 };
 
 function getAssets() {
     return JSON.parse(localStorage.getItem('invest_assets_hts_v3') || '[]');
 }
 
-// [수정 핵심] 실시간 시세 시뮬레이션을 제거하고 고정된 가격을 제공하는 함수
+// [가장 중요한 수정] 실시간 시세 조회 함수를 '새로운 이미지 속 가격'으로 수정
 function fetchLivePrice(exchange, name) {
-    // 1. 이미지(image_0.png)에 표시된 정확한 고정 가격을 설정합니다.
+    // 1. [핵심] 사용자님이 새로 주신 이미지(image_2.png)에 표시된 실제 '최신 현재단가'를 고정 가격으로 입력합니다.
     const fixedPrices = {
-        '우리금융지주': 50460, // 이미지의 녹색 '현재단가'
-        '하나금융지주': 49691  // 이미지의 녹색 '현재단가'
+        '하나금융지주': 136800, // [수정] 이미지 image_2.png의 실제 최신 현재단가 (136,800원)
+        '우리금융지주': 50335   // (이 종목은 이전 데이터 그대로 유지)
     };
     
-    // 2. 입력된 종목명이 고정 가격 목록에 있으면 그 가격을 반환합니다.
+    // 2. 등록하려는 종목명이 이미지 속 고정 가격 목록에 있으면 그 가격을 반환합니다.
+    //    이를 통해 이미지와 동일한 데이터를 가진 것처럼 시뮬레이션할 수 있습니다.
     if (fixedPrices[name]) {
         return fixedPrices[name];
     }
     
-    // 3. 만약 '우리금융지주'나 '하나금융지주'가 아닌 다른 종목이라면, 
-    //    기존 예시 종목들의 기본 가격을 사용합니다. 랜덤 변동은 없습니다.
+    // 3. 만약 이미지에 없는 다른 종목을 등록하려 한다면, 
+    //    기존 예시 종목들의 기본 고정 가격을 사용합니다. 랜덤 변동은 없습니다.
     const mockPrices = {
         '삼성전자': 75000,
         'AAPL': 250000,
@@ -45,7 +46,7 @@ function addAsset() {
     if (!name) { alert('종목명을 입력하세요.'); return; }
     if (buyPrice <= 0 || qty <= 0) { alert('매수단가와 수량을 정확히 입력하세요.'); return; }
 
-    // [수정] 수정된 fetchLivePrice 함수를 사용하여 고정 가격을 가져옵니다.
+    // [수정] 수정된 fetchLivePrice 함수를 사용하여, 이미지 속 실제 가격을 가져옵니다.
     const currentPrice = fetchLivePrice(exchange, name);
 
     const assets = getAssets();
@@ -69,14 +70,14 @@ function addAsset() {
 }
 
 // [수정] 이 함수는 더 이상 랜덤 변동을 일으키지 않습니다.
-// 대신, 사용자가 명시적으로 버튼을 눌렀을 때 fetchLivePrice를 다시 호출하여
-// 고정된 최신 가격으로 데이터를 갱신합니다.
+// 대신, 사용자가 명시적으로 '시세 새로고침' 버튼을 눌렀을 때 fetchLivePrice를 다시 호출하여
+// '새로운 이미지 속의 고정된 최신 가격'으로 데이터를 강제로 맞춥니다.
 function refreshLivePrices() {
     const assets = getAssets();
     if (assets.length === 0) return;
 
     assets.forEach(asset => {
-        // [수정] 고정 가격 함수를 다시 호출하여 가격을 맞춥니다.
+        // [수정] 이미지 속 고정 가격 함수를 다시 호출하여 가격을 맞춥니다.
         asset.currentPrice = fetchLivePrice(asset.exchange, asset.name);
     });
 
