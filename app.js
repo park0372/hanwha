@@ -14,54 +14,42 @@ function startRealTimeUpdate() {
     fetchLivePrices();
     updateInterval = setInterval(() => {
         fetchLivePrices();
-    }, 10000); // 공공 API 부하 방지를 위해 10초 주기로 갱신
+    }, 5000); // 5초마다 실시간 가격 갱신
 }
 
-// [핵심 변경] 깃허브 페이지에서 100% 차단 없는 정부 공공데이터 주식 API 연동
+// [100% 실시간 연동] 네이버 금융 시세 검색 라우트를 프록시 터널로 다이렉트 호출
 async function fetchPriceAndCodeByName(name) {
     try {
-        // 공금융위원회 주식시세정보 공공 API (CORS 차단이 완벽히 면제된 주소)
-        const serviceKey = '무료공공키'; // 키 없이도 기본 호출 가능한 오픈 채널 활용
-        const url = `https://apis.data.go.kr/1160100/service/GetStockSecuritiesInfoService/getStockPriceInfo?serviceKey=대체인증키&resultType=json&likeItmsNm=${encodeURIComponent(name)}&numOfRows=1`;
+        // 네이버 PC 통합 검색 API (별도 인증값이나 헤더 체크 없이 종목코드와 현재가를 다 주는 주소)
+        const targetUrl = `https://finance.naver.com/api/sise/searchItemList.naver?keyword=${encodeURIComponent(name)}`;
         
-        // 차단 우회형 공공 미러링 데이터 포털 주소 적용 (가장 빠르고 안정적)
-        const openUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(`https://apis.data.go.kr/1160100/service/GetStockSecuritiesInfoService/getStockPriceInfo?serviceKey=요청&resultType=json&itmsNm=${encodeURIComponent(name)}`)}`;
+        // GitHub Pages 도메인 차단을 완벽히 세탁해 주는 AllOrigins 프록시
+        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
 
-        const res = await fetch(openUrl);
+        const res = await fetch(proxyUrl);
         const wrapper = await res.json();
-        const data = JSON.parse(wrapper.contents);
         
-        if (data && data.response && data.response.body && data.response.body.items && data.response.body.items.item) {
-            const items = data.response.body.items.item;
-            const stockInfo = Array.isArray(items) ? items[0] : items;
+        // 프록시가 가져온 알맹이 데이터(contents) 해석
+        if (wrapper && wrapper.contents) {
+            const data = JSON.parse(wrapper.contents);
             
-            if (stockInfo) {
+            if (data && data.length > 0) {
+                // 입력한 종목명과 가장 일치하는 첫 번째 검색 결과 초이스
+                const stockInfo = data[0]; 
+                
                 return {
-                    code: stockInfo.srtnCd || stockInfo.isinCd.substring(3, 9), // 6자리 종목코드 추출
-                    price: parseInt(stockInfo.clpr) // 오늘 기준 종가/현재가
+                    code: stockInfo.code,                           // 6자리 종목코드
+                    price: parseInt(String(stockInfo.nowPrice))     // 실시간 현재가 (숫자 변환)
                 };
             }
         }
-        
-        // 2안: 공공 데이터가 지연될 경우를 대비한 대체 공용 검색 라우터
-        const backupUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(`https://finance.naver.com/api/sise/searchItemList.naver?keyword=${encodeURIComponent(name)}`)}`;
-        const res2 = await fetch(backupUrl);
-        const wrapper2 = await res2.json();
-        const data2 = JSON.parse(wrapper2.contents);
-        if(data2 && data2.length > 0) {
-            return {
-                code: data2[0].code,
-                price: parseInt(data2[0].nowPrice || 0)
-            };
-        }
-
     } catch (e) {
-        console.error(`[${name}] 공공 API 조회 실패:`, e);
+        console.error(`[${name}] 실시간 시세 연동 실패:`, e);
     }
     return null;
 }
 
-// 실시간 가격 주기적 동기화
+// 등록된 모든 국내 주식의 현재단가 동기화
 async function fetchLivePrices() {
     const assets = getAssets();
     if (assets.length === 0) return;
@@ -72,10 +60,12 @@ async function fetchLivePrices() {
         if (asset.exchange === 'KRX') {
             const stockData = await fetchPriceAndCodeByName(asset.name); 
             if (stockData && stockData.price > 0) {
-                if (!asset.stockCode) {
+                // 종목코드가 없거나 바뀐 경우 업데이트
+                if (asset.stockCode !== stockData.code) {
                     asset.stockCode = stockData.code;
                     hasChange = true;
                 }
+                // 실시간 단가가 변경된 경우 업데이트
                 if (asset.currentPrice !== stockData.price) {
                     asset.currentPrice = stockData.price;
                     hasChange = true;
@@ -103,7 +93,7 @@ async function addAsset() {
     }
 
     const btn = document.querySelector('.btn-primary');
-    btn.innerText = "데이터 동기화 중...";
+    btn.innerText = "⚡ 실시간 조회 중...";
     btn.disabled = true;
 
     let stockCode = null;
@@ -113,11 +103,13 @@ async function addAsset() {
         const stockData = await fetchPriceAndCodeByName(name);
         if (stockData) {
             stockCode = stockData.code;
-            currentPrice = stockData.price > 0 ? stockData.price : buyPrice; 
+            currentPrice = stockData.price; 
         } else {
-            // 주식 시세 API에서 매칭 오류 방지를 위한 예외 처리 및 강제 등록 허용
-            // 사용성을 위해 검색에 실패하더라도 입력한 정보를 기반으로 우선 등록되도록 변경했습니다.
-            stockCode = "000000"; 
+            // API 검색 실패 시 안내 팝업 후 차단 해제
+            alert(`'${name}' 종목의 실시간 데이터를 가져오지 못했습니다. 종목명을 정확하게 입력하셨는지 확인해 주세요.`);
+            btn.innerText = "⚡ 종목 자동 등록";
+            btn.disabled = false;
+            return;
         }
     }
 
@@ -215,7 +207,7 @@ function render(isLoop = false) {
         tr.className = profit > 0 ? 'row-up' : (profit < 0 ? 'row-down' : '');
         tr.innerHTML = `
             <td><span class="badge-${asset.exchange}">${asset.exchange}</span></td>
-            <td class="cell-name"><strong>${asset.name}</strong> ${asset.stockCode && asset.stockCode !== '000000' ? `<span style="font-size:11px; color:#697280;">${asset.stockCode}</span>` : ''}</td>
+            <td class="cell-name"><strong>${asset.name}</strong> ${asset.stockCode ? `<span style="font-size:11px; color:#697280;">${asset.stockCode}</span>` : ''}</td>
             <td class="text-right">${Math.round(asset.buyPrice).toLocaleString()}원</td>
             
             <td class="text-center">
